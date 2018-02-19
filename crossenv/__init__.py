@@ -115,10 +115,9 @@ class CrossEnvBuilder(venv.EnvBuilder):
         self.host_sysroot = run_compiler('-print-sysroot').strip()
 
     def ensure_directories(self, env_dir):
-        # We'll need our own cross library to hold modifications
-
         context = super().ensure_directories(env_dir)
 
+        # We'll need our own cross library to hold modifications
         def create_if_needed(d):
             if not os.path.exists(d):
                 os.makedirs(d)
@@ -127,6 +126,16 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
         context.cross_lib = os.path.join(env_dir, 'lib', 'cross')
         create_if_needed(context.cross_lib)
+
+        # We'll need a venv for the build python. This will
+        # let us easily install setup_requires stuff.
+        context.build_python_dir = os.path.join(env_dir, 'lib', 'build')
+        env = venv.EnvBuilder(system_site_packages=True,
+                              clear=True,
+                              with_pip=True)
+        env.create(context.build_python_dir)
+        context.build_bin_path = os.path.join(context.build_python_dir, 'bin')
+
         return context
 
     def create_configuration(self, context):
@@ -136,6 +145,24 @@ class CrossEnvBuilder(venv.EnvBuilder):
         context.python_dir = self.host_project_base
         super().create_configuration(context)
         context.python_dir = python_dir
+
+    def setup_python(self, context):
+        super().setup_python(context)
+
+        # Add build-python and build-pip to the path. These need to be
+        # scripts. If we just symlink/hardlink, we'll grab the wrong env.
+        def link_script(name):
+            target = os.path.join(context.build_bin_path, name)
+            path = os.path.join(context.bin_path, 'build-' + name)
+            with open(path, 'w') as fp:
+                fp.write(dedent(f'''\
+                    #!/bin/sh
+                    exec {target} "$@"
+                    '''))
+            os.chmod(path, 0o755)
+
+        link_script('python')
+        link_script('pip')
 
     def post_setup(self, context):
         # Replace python binary with a script that sets the environment
