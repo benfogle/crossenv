@@ -162,18 +162,17 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
         # Add build-python and build-pip to the path. These need to be
         # scripts. If we just symlink/hardlink, we'll grab the wrong env.
-        def link_script(name):
-            target = os.path.join(context.build_bin_path, name)
-            path = os.path.join(context.bin_path, 'build-' + name)
-            with open(path, 'w') as fp:
+        for exe in os.listdir(context.build_bin_path):
+            target = os.path.join(context.build_bin_path, exe)
+            if not os.path.isfile(target) or not os.access(target, os.X_OK):
+                continue
+            dest = os.path.join(context.bin_path, 'build-' + exe)
+            with open(dest, 'w') as fp:
                 fp.write(dedent(f'''\
                     #!/bin/sh
                     exec {target} "$@"
                     '''))
-            os.chmod(path, 0o755)
-
-        link_script('python')
-        link_script('pip')
+            os.chmod(dest, 0o755)
 
     def post_setup(self, context):
         # Replace python binary with a script that sets the environment
