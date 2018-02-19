@@ -127,15 +127,6 @@ class CrossEnvBuilder(venv.EnvBuilder):
         context.cross_lib = os.path.join(env_dir, 'lib', 'cross')
         create_if_needed(context.cross_lib)
 
-        # We'll need a venv for the build python. This will
-        # let us easily install setup_requires stuff.
-        context.build_python_dir = os.path.join(env_dir, 'lib', 'build')
-        env = venv.EnvBuilder(system_site_packages=True,
-                              clear=True,
-                              with_pip=True)
-        env.create(context.build_python_dir)
-        context.build_bin_path = os.path.join(context.build_python_dir, 'bin')
-
         return context
 
     def create_configuration(self, context):
@@ -148,6 +139,26 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
     def setup_python(self, context):
         super().setup_python(context)
+
+        # We'll need a venv for the build python. This will
+        # let us easily install setup_requires stuff.
+        context.build_python_dir = os.path.join(context.env_dir, 'lib', 'build')
+        env = venv.EnvBuilder(system_site_packages=True,
+                              clear=True,
+                              with_pip=True)
+        env.create(context.build_python_dir)
+        context.build_bin_path = os.path.join(context.build_python_dir, 'bin')
+        context.build_env_exe = os.path.join(context.build_bin_path, 'python')
+        out = subprocess.check_output(
+                [context.build_env_exe,
+                    '-c',
+                    r"import sys; print('\n'.join(sys.path))"],
+                universal_newlines=True).splitlines()
+        context.build_sys_path = []
+        for line in out:
+            line = line.strip()
+            if line:
+                context.build_sys_path.append(line)
 
         # Add build-python and build-pip to the path. These need to be
         # scripts. If we just symlink/hardlink, we'll grab the wrong env.
@@ -209,9 +220,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
         script = os.path.join('scripts', 'site.py')
         src = pkg_resources.resource_string(__name__, script).decode()
 
-        prefix = os.path.normpath(sys.base_prefix)
-        build_path = [ p for p in sys.path if p.startswith(prefix) ]
-        src = src.format(build_path=build_path)
+        src = src.format(build_path=context.build_sys_path)
         dst_name = os.path.join(context.cross_lib, 'site.py')
         with open(dst_name, 'w') as fp:
             fp.write(src)

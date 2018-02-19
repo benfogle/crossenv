@@ -1,33 +1,58 @@
-import importlib
-import importlib.util
+import importlib.machinery
 import sys
 import os
 import sysconfig
 
-def restore_site():
-    """Restore the original site module"""
 
-    cross_dir = os.path.dirname(__file__)
-    new_path = [ p for p in sys.path
-            if not os.path.exists(p) or not os.path.samefile(p, cross_dir) ]
-    sys.path = new_path
-    sys.path.extend({build_path})
+# Fixup paths so we can import packages installed on the build
+# system correctly.
+sys.build_path = {build_path}
+stdlib = os.path.normpath(sysconfig.get_path('stdlib'))
 
-    del sys.modules['site']
-    import site
-    sys.path.append(cross_dir)
+class BuildPathFinder(importlib.machinery.PathFinder):
+    """This class exists because we want to hide our modifications to
+    sys.path so that pip/setuptools/etc. don't find build-python
+    packages when deciding what to install."""
+    @classmethod
+    def find_spec(cls, fullname, path=None, target=None):
+        if path is None:
+            # Need to do this every time in case sys.path changes.
+            # We insert build paths just before the host stdlibs
+            path = []
+            for i, p in enumerate(sys.path):
+                if p.startswith(stdlib):
+                    path.extend(sys.build_path)
+                    path.extend(sys.path[i:])
+                    break
+                else:
+                    path.append(p)
+        return super().find_spec(fullname, path, target)
 
-def fixup_sys():
-    # sysconfig should be correct, but some little parts of
-    # sys are hardcoded (but changable)
-    multiarch = sysconfig.get_config_var('MULTIARCH')
-    if multiarch is None:
-        try:
-            del sys.implementation._multiarch
-        except AttributeError:
-            pass
-    else:
-        sys.implementation._multiarch = multiarch
+# Insert just before the regular sys.path handler
+for i, meta in enumerate(sys.meta_path):
+    if meta is importlib.machinery.PathFinder:
+        sys.meta_path[i] = BuildPathFinder
+        break
+else:
+    sys.meta_path.append(BuildPathFinder) #???
 
-fixup_sys()
-restore_site()
+# Remove this directory. It's not needed after startup.
+cross_dir = os.path.dirname(__file__)
+sys.path = [ p for p in sys.path
+    if not os.path.exists(p) or not os.path.samefile(p, cross_dir) ]
+
+# Fixup sys:
+# sysconfig should be correct, but some little parts of
+# sys are hardcoded (but changable)
+multiarch = sysconfig.get_config_var('MULTIARCH')
+if multiarch is None:
+    try:
+        del sys.implementation._multiarch
+    except AttributeError:
+        pass
+else:
+    sys.implementation._multiarch = multiarch
+
+# Restore the site module
+del sys.modules['site']
+import site
