@@ -15,12 +15,18 @@ logger = logging.getLogger(__name__)
 
 
 class CrossEnvBuilder(venv.EnvBuilder):
-    def __init__(self, *, host_python, **kwargs):
+    def __init__(self, *,
+            host_python,
+            extra_env_vars=(),
+            build_system_site_packages=False,
+            clear=False,
+            prompt=None):
         self.find_host_python(host_python)
         self.find_compiler_info()
-        kwargs['symlinks'] = True
-        kwargs['with_pip'] = True
-        super().__init__(**kwargs)
+        self.build_system_site_packages = build_system_site_packages
+        self.extra_env_vars = extra_env_vars
+        super().__init__(symlinks=True, with_pip=True, clear=clear,
+                prompt=prompt)
 
     def find_host_python(self, host):
         """Find Python paths and other info based on a path.
@@ -143,9 +149,10 @@ class CrossEnvBuilder(venv.EnvBuilder):
         # We'll need a venv for the build python. This will
         # let us easily install setup_requires stuff.
         context.build_python_dir = os.path.join(context.env_dir, 'lib', 'build')
-        env = venv.EnvBuilder(system_site_packages=True,
-                              clear=True,
-                              with_pip=True)
+        env = venv.EnvBuilder(
+                system_site_packages=self.build_system_site_packages,
+                clear=True,
+                with_pip=True)
         env.create(context.build_python_dir)
         context.build_bin_path = os.path.join(context.build_python_dir, 'bin')
         context.build_env_exe = os.path.join(context.build_bin_path, 'python')
@@ -198,6 +205,14 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 else:
                     fp.write(f'export CPATH={inc}\n')
 
+            for name, assign, val in self.extra_env_vars:
+                if assign == '=':
+                    fp.write(f'export {name}={val}\n')
+                elif assign == '?=':
+                    fp.write(f'[ -z "${{{name}}}" ] && export {name}={val}\n')
+                else:
+                    assert False, f"Bad assignment value {assign!r}"
+
             fp.write(f'exec {context.real_env_exe} "$@"\n')
         os.chmod(context.env_exe, 0o755)
 
@@ -236,8 +251,60 @@ class CrossEnvBuilder(venv.EnvBuilder):
             os.chmod(dest, 0o755)
 
 
+def parse_env_vars(env_vars):
+    parsed = []
+    for spec in env_vars:
+        spec = spec.lstrip()
+        assign = '='
+        try:
+            name, value = spec.split('=',1)
+        except IndexError:
+            raise ValueError(f"Invalid variable {spec!r}. Must be in the form "
+                              "NAME=VALUE or NAME?=VALUE")
+        if name.endswith('?'):
+            assign = '?='
+            name = name[:-1]
+
+        if not name.isidentifier():
+            raise ValueError(f"Invalid variable name {name!r}")
+
+        parsed.append((name, assign, value))
+    return parsed
+
+
 def main():
-    host = sys.argv[1]
-    dest = sys.argv[2]
-    builder = CrossEnvBuilder(host_python=host)
-    builder.create(dest)
+    import argparse
+    parser = argparse.ArgumentParser(description="""
+                Create virtual Python environments for cross compiling
+                """)
+
+    parser.add_argument('--system-site-packages', action='store_true',
+        help="""Give the *build* python environment access to the system
+                site-packages dir.""")
+    parser.add_argument('--clear', action='store_true',
+        help="""Delete the contents of the environment directoy if it already
+                exists.""")
+    parser.add_argument('--prompt', action='store',
+        help="""Provides an alternative prompt prefix for this environment.""")
+    parser.add_argument('--env', action='append', default=[],
+        help="""An environment variable in the form FOO=BAR that will be
+                added to the environment just before executing the python
+                build executable. May be given multiple times. The form
+                FOO?=BAR is also allowed to assign FOO only if not already
+                set.""")
+    parser.add_argument('HOST_PYTHON',
+        help="""The host Python to use. This should be the path to the Python
+                executable, which may be in the source directory or an installed
+                directory structure.""")
+    parser.add_argument('ENV_DIR', nargs='+',
+        help="""A directory to create the environment in.""")
+
+    args = parser.parse_args()
+    env = parse_env_vars(args.env)
+    builder = CrossEnvBuilder(host_python=args.HOST_PYTHON,
+            build_system_site_packages=args.system_site_packages,
+            clear=args.clear,
+            prompt=args.prompt,
+            extra_env_vars=env)
+    for env_dir in args.ENV_DIR:
+        builder.create(env_dir)
