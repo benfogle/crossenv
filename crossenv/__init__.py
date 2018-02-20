@@ -160,20 +160,6 @@ class CrossEnvBuilder(venv.EnvBuilder):
             if line:
                 context.build_sys_path.append(line)
 
-        # Add build-python and build-pip to the path. These need to be
-        # scripts. If we just symlink/hardlink, we'll grab the wrong env.
-        for exe in os.listdir(context.build_bin_path):
-            target = os.path.join(context.build_bin_path, exe)
-            if not os.path.isfile(target) or not os.access(target, os.X_OK):
-                continue
-            dest = os.path.join(context.bin_path, 'build-' + exe)
-            with open(dest, 'w') as fp:
-                fp.write(dedent(f'''\
-                    #!/bin/sh
-                    exec {target} "$@"
-                    '''))
-            os.chmod(dest, 0o755)
-
     def post_setup(self, context):
         # Replace python binary with a script that sets the environment
         # variables. Don't do this in bin/activate, because it's a pain
@@ -227,6 +213,28 @@ class CrossEnvBuilder(venv.EnvBuilder):
         # Copy sysconfigdata
         shutil.copy(self.host_sysconfigdata_file, context.cross_lib)
         
+        # Add host-python alias to the path. This is just for
+        # convenience and clarity.
+        for exe in os.listdir(context.bin_path):
+            target = os.path.join(context.bin_path, exe)
+            if not exe.startswith('host-') and os.access(target, os.X_OK):
+                dst = os.path.join(context.bin_path, 'host-' + exe)
+                os.symlink(exe, dst)
+
+        # Add build-python and build-pip to the path. These need to be
+        # scripts. If we just symlink/hardlink, we'll grab the wrong env.
+        for exe in os.listdir(context.build_bin_path):
+            target = os.path.join(context.build_bin_path, exe)
+            if not os.path.isfile(target) or not os.access(target, os.X_OK):
+                continue
+            dest = os.path.join(context.bin_path, 'build-' + exe)
+            with open(dest, 'w') as fp:
+                fp.write(dedent(f'''\
+                    #!/bin/sh
+                    exec {target} "$@"
+                    '''))
+            os.chmod(dest, 0o755)
+
 
 def main():
     host = sys.argv[1]
