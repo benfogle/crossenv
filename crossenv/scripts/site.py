@@ -37,9 +37,12 @@ else:
     sys.meta_path.append(BuildPathFinder) #???
 
 # Remove this directory. It's not needed after startup.
+# The one after will be one of ours too.
 cross_dir = os.path.dirname(__file__)
-sys.path = [ p for p in sys.path
-    if not os.path.exists(p) or not os.path.samefile(p, cross_dir) ]
+for index, p in enumerate(sys.path):
+    if os.path.exists(p) and os.path.samefile(p, cross_dir):
+        del sys.path[index:index+2]
+        break
 
 # Fixup sys:
 # sysconfig should be correct, but some little parts of

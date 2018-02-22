@@ -35,12 +35,13 @@ class CrossEnvBuilder(venv.EnvBuilder):
         """
 
         host = os.path.abspath(host)
-        if os.path.isfile(host):
-            self.host_project_base = os.path.dirname(host)
-        elif os.path.isdir(host):
-            self.host_project_base = host
+        if not os.path.exists(host):
+            raise FileNotFoundError(f"{host} does not exist")
+        elif not os.path.isfile(host):
+            raise ValueError(f"Expected a path to a Python executable. "
+                             f"Got {host}")
         else:
-            raise FileNotFoundError(f"No such file or directory {host}")
+            self.host_project_base = os.path.dirname(host)
 
         if sysconfig._is_python_source_dir(self.host_project_base):
             self.host_makefile = os.path.join(self.host_project_base, 'Makefile')
@@ -54,7 +55,9 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
             self.host_home = self.host_project_base
             sysconfigdata = glob.glob(
-                os.path.join(pybuilddir, '_sysconfigdata*.py'))
+                os.path.join(self.host_project_base,
+                             build_dir,
+                             '_sysconfigdata*.py'))
         else:
             # Assume host_project_base == {prefix}/bin and that this Python
             # mirrors the host Python's install paths.
@@ -86,9 +89,11 @@ class CrossEnvBuilder(venv.EnvBuilder):
         spec = importlib.util.spec_from_file_location(
                 self.host_sysconfigdata_name,
                 self.host_sysconfigdata_file)
-        self.host_sysconfigdata = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(self.host_sysconfigdata)
-        self.host_cc = self.host_sysconfigdata.build_time_vars['CC']
+        syscfg = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(syscfg)
+        self.host_sysconfigdata = syscfg
+
+        self.host_cc = syscfg.build_time_vars['CC']
 
         # Ask the makefile a few questions too
         if not os.path.exists(self.host_makefile):
@@ -177,14 +182,23 @@ class CrossEnvBuilder(venv.EnvBuilder):
         sysconfig_name = os.path.basename(self.host_sysconfigdata_file)
         sysconfig_name, _ = os.path.splitext(sysconfig_name)
 
+        # If this venv is generated from a host-python still in its
+        # build directory, rather than installed, then our modifications
+        # prevent build-python from finding its pure-Python libs, which
+        # will cause a crash on startup. Add them back to PYTHONPATH.
+        # Also: 'stdlib' might not be acurate if build-python is in a build
+        # directory.
+        stdlib = os.path.abspath(os.path.dirname(os.__file__))
+        pypath = f'$VIRTUAL_ENV/lib/cross:{stdlib}'
+
         with open(context.env_exe, 'w') as fp:
             fp.write(dedent(f'''\
                 #!/bin/sh
                 export _PYTHON_PROJECT_BASE={self.host_project_base}
                 export _PYTHON_HOST_PLATFORM={self.host_platform}
-                export PYTHONPATH=$VIRTUAL_ENV/lib/cross:$PYTHONPATH
                 export _PYTHON_SYSCONFIGDATA_NAME={sysconfig_name}
                 export PYTHONHOME={self.host_home}
+                export PYTHONPATH={pypath}:$PYTHONPATH
                 '''))
 
             # Add sysroot to various environment variables. This doesn't help
