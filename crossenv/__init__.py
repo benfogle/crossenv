@@ -198,7 +198,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 export _PYTHON_HOST_PLATFORM={self.host_platform}
                 export _PYTHON_SYSCONFIGDATA_NAME={sysconfig_name}
                 export PYTHONHOME={self.host_home}
-                export PYTHONPATH={pypath}:$PYTHONPATH
+                export PYTHONPATH={pypath}${{PYTHONPATH:+:$PYTHONPATH}}
                 '''))
 
             # Add sysroot to various environment variables. This doesn't help
