@@ -6,6 +6,7 @@ import sysconfig
 
 # Fixup paths so we can import packages installed on the build
 # system correctly.
+sys.cross_compiling = 'crossenv'
 sys.build_path = {build_path}
 stdlib = os.path.normpath(sysconfig.get_path('stdlib'))
 

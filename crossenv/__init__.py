@@ -194,6 +194,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
         with open(context.env_exe, 'w') as fp:
             fp.write(dedent(f'''\
                 #!/bin/sh
+                export PYTHON_CROSSENV=1
                 export _PYTHON_PROJECT_BASE={self.host_project_base}
                 export _PYTHON_HOST_PLATFORM={self.host_platform}
                 export _PYTHON_SYSCONFIGDATA_NAME={sysconfig_name}
