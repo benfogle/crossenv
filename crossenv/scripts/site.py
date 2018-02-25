@@ -1,13 +1,26 @@
 import importlib.machinery
 import sys
 import os
-import sysconfig
 
+# sysconfig isn't _quite_ set up right, because it queries from a not-yet fixed
+# sys module. The variables that come from build_time_vars are correct, so
+# we can safely use those. We'll re-import it later once sys is fixed.
+import sysconfig
 
 # Fixup paths so we can import packages installed on the build
 # system correctly.
 sys.cross_compiling = 'crossenv'
 sys.build_path = {build_path}
+
+abiflags = sysconfig.get_config_var('ABIFLAGS')
+if abiflags is None:
+    try:
+        del sys.abiflags
+    except AttributeError:
+        pass
+else:
+    sys.abiflags = abiflags
+
 stdlib = os.path.normpath(sysconfig.get_path('stdlib'))
 
 class BuildPathFinder(importlib.machinery.PathFinder):
@@ -57,6 +70,9 @@ if multiarch is None:
 else:
     sys.implementation._multiarch = multiarch
 
-# Restore the site module
+# importlib.reload would probably work, but just to be safe we'll try to 
+# have the modules' __dict__ completely clean.
 del sys.modules['site']
+del sys.modules['sysconfig']
 import site
+import sysconfig
