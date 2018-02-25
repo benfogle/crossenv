@@ -228,7 +228,16 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 else:
                     assert False, f"Bad assignment value {assign!r}"
 
-            fp.write(f'exec {context.real_env_exe} "$@"\n')
+            # We want to alter argv[0] so that sys.executable will be correct.
+            # We can't do this in a POSIX-compliant way, so we'll break
+            # into Python
+            fp.write(dedent(f'''\
+                exec {context.build_env_exe} -c '
+                import sys
+                import os
+                os.execv("{context.real_env_exe}", sys.argv[1:])
+                ' "$0" "$@"
+                '''))
         os.chmod(context.env_exe, 0o755)
 
         # Modifiy site.py
