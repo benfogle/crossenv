@@ -8,43 +8,42 @@ from textwrap import dedent
 import subprocess
 import logging
 import importlib
+import types
 
 import pkg_resources
 
+from .utils import F
+from . import utils
+
 logger = logging.getLogger(__name__)
 
-# We're using %-style formatting everywhere because it's more convenient for
-# building Python and Bourne Shell source code. We'll build some helpers to
-# make it just a bit more like f-strings.
-
-class FormatMapping:
-    '''Map strings such that %(foo.bar)s works in %-format strings'''
-    def __init__(self, mapping):
-        self.mapping = mapping
-
-    def __getitem__(self, key):
-        parts = key.split('.')
-        obj = self.mapping[parts[0]]
-        for p in parts[1:]:
-            obj = getattr(obj, p)
-        return obj
-
-def _f(s, values):
-    values = FormatMapping(values)
-    return s % values
-
 class CrossEnvBuilder(venv.EnvBuilder):
+
     def __init__(self, *,
             host_python,
             extra_env_vars=(),
             build_system_site_packages=False,
             clear=False,
-            prompt=None):
+            prompt=None,
+            host_prefix=None):
         self.find_host_python(host_python)
         self.find_compiler_info()
         self.build_system_site_packages = build_system_site_packages
         self.extra_env_vars = extra_env_vars
-        super().__init__(symlinks=True, with_pip=True, clear=clear,
+        self.clear_build = clear in ('default', 'build', 'both')
+        if host_prefix:
+            self.host_prefix = os.path.abspath(host_prefix)
+            self.clear_host = clear in ('host', 'both')
+        else:
+            self.host_prefix = None
+            self.clear_host = clear in ('default', 'host', 'both')
+
+        super().__init__(
+                system_site_packages=False,
+                clear=False,
+                symlinks=True,
+                upgrade=False,
+                with_pip=False,
                 prompt=prompt)
 
     def find_host_python(self, host):
@@ -144,43 +143,47 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
         self.host_sysroot = run_compiler('-print-sysroot').strip()
 
+    def create(self, env_dir):
+        env_dir = os.path.abspath(env_dir)
+        context = self.ensure_directories(env_dir)
+        self.make_build_python(context)
+        self.make_host_python(context)
+        self.post_setup(context)
+
     def ensure_directories(self, env_dir):
+        # Directory structure:
+        #
+        # ENV_DIR/
+        #   host/       host-python venv. Empty bin/
+        #   build/      build-python venv. All scripts, etc. here.
+        #   lib/        cross libs for setting up host-python
+        #   bin/        holds activate scripts.
+
+        if os.path.exists(env_dir) and (self.clear_host or self.clear_build):
+            subdirs = os.listdir(env_dir)
+            for sub in subdirs:
+                if sub in ('host', 'build'):
+                    continue
+                utils.remove_path(os.path.join(env_dir, sub))
+
         context = super().ensure_directories(env_dir)
-
-        # We'll need our own cross library to hold modifications
-        def create_if_needed(d):
-            if not os.path.exists(d):
-                os.makedirs(d)
-            elif os.path.islink(d) or os.path.isfile(d):
-                raise ValueError('Unable to create directory %r' % d)
-
-        context.cross_lib = os.path.join(env_dir, 'lib', 'cross')
-        create_if_needed(context.cross_lib)
-
+        context.lib_path = os.path.join(env_dir, 'lib')
+        utils.mkdir_if_needed(context.lib_path)
         return context
 
-    def create_configuration(self, context):
-        # Make sure that the 'home = ...' line points to the host Python, not
-        # the build Python.
-        python_dir = context.python_dir
-        context.python_dir = self.host_project_base
-        super().create_configuration(context)
-        context.python_dir = python_dir
-
-    def setup_python(self, context):
-        super().setup_python(context)
-
-        # We'll need a venv for the build python. This will
-        # let us easily install setup_requires stuff.
-        logger.info("Setting up build-python environment")
-        context.build_python_dir = os.path.join(context.env_dir, 'lib', 'build')
+    def make_build_python(self, context):
+        context.build_env_dir = os.path.join(context.env_dir, 'build')
+        logger.info("Creating build-python environment")
         env = venv.EnvBuilder(
                 system_site_packages=self.build_system_site_packages,
-                clear=True,
+                clear=self.clear_build,
                 with_pip=True)
-        env.create(context.build_python_dir)
-        context.build_bin_path = os.path.join(context.build_python_dir, 'bin')
-        context.build_env_exe = os.path.join(context.build_bin_path, 'python')
+        env.create(context.build_env_dir)
+        context.build_bin_path = os.path.join(context.build_env_dir, 'bin')
+        context.build_env_exe = os.path.join(
+                context.build_bin_path, context.python_exe)
+
+        # What is build-python's sys.path?
         out = subprocess.check_output(
                 [context.build_env_exe,
                     '-c',
@@ -191,15 +194,46 @@ class CrossEnvBuilder(venv.EnvBuilder):
             line = line.strip()
             if line:
                 context.build_sys_path.append(line)
-        logger.info("Done setting up build-python")
 
-    def post_setup(self, context):
-        # Replace python binary with a script that sets the environment
-        # variables. Don't do this in bin/activate, because it's a pain
-        # to set/unset properly (and for csh, fish as well).
-        exe_dir, exe = os.path.split(context.env_exe)
-        context.real_env_exe = os.path.join(exe_dir, '_'+exe)
-        shutil.move(context.env_exe, context.real_env_exe)
+    def make_host_python(self, context):
+        logger.info("Creating host-python environment")
+        if self.host_prefix:
+            context.host_env_dir = self.host_prefix
+        else:
+            context.host_env_dir = os.path.join(context.env_dir, 'host')
+        clear_host = self.clear in ('default', 'host-only', 'both')
+        env = venv.EnvBuilder(
+                system_site_packages=False,
+                clear=self.clear_host,
+                symlinks=True,
+                upgrade=False,
+                with_pip=False)
+        env.create(context.host_env_dir)
+        context.host_bin_path = os.path.join(context.host_env_dir, 'bin')
+        context.host_env_exe = os.path.join(
+                context.host_bin_path, context.python_exe)
+        context.host_cfg_path = os.path.join(context.host_env_dir, 'pyvenv.cfg')
+        context.host_activate = os.path.join(context.host_bin_path, 'activate')
+
+        # Remove binaries. We'll run from elsewhere
+        for exe in os.listdir(context.host_bin_path):
+            if not exe.startswith('activate'):
+                utils.remove_path(os.path.join(context.host_bin_path, exe))
+
+        # Alter pyvenv.cfg
+        with utils.overwrite_file(context.host_cfg_path) as out:
+            with open(context.host_cfg_path) as inp:
+                for line in inp:
+                    if line.split()[0:2] == ['home', '=']:
+                        line = 'home = %s\n' % self.host_project_base
+                    out.write(line)
+
+        # make a script that sets the environment variables and calls Python.
+        # Don't do this in bin/activate, because it's a pain to set/unset
+        # properly (and for csh, fish as well).
+        
+        # Note that env_exe hasn't actually been created yet.
+
         sysconfig_name = os.path.basename(self.host_sysconfigdata_file)
         sysconfig_name, _ = os.path.splitext(sysconfig_name)
 
@@ -210,17 +244,19 @@ class CrossEnvBuilder(venv.EnvBuilder):
         # Also: 'stdlib' might not be acurate if build-python is in a build
         # directory.
         stdlib = os.path.abspath(os.path.dirname(os.__file__))
-        pypath = _f('$VIRTUAL_ENV/lib/cross:%(stdlib)s', locals())
 
-        with open(context.env_exe, 'w') as fp:
-            fp.write(dedent(_f('''\
+        with open(context.host_env_exe, 'w') as fp:
+            fp.write(dedent('''\
                 #!/bin/sh
+                _base=${0##*/}
                 export PYTHON_CROSSENV=1
-                export _PYTHON_PROJECT_BASE=%(self.host_project_base)s
-                export _PYTHON_HOST_PLATFORM=%(self.host_platform)s
-                export _PYTHON_SYSCONFIGDATA_NAME=%(sysconfig_name)s
-                export PYTHONHOME=%(self.host_home)s
-                export PYTHONPATH=%(pypath)s${PYTHONPATH:+:$PYTHONPATH}
+                '''))
+            fp.write(dedent(F('''\
+                export _PYTHON_PROJECT_BASE="%(self.host_project_base)s"
+                export _PYTHON_HOST_PLATFORM="%(self.host_platform)s"
+                export _PYTHON_SYSCONFIGDATA_NAME="%(sysconfig_name)s"
+                export PYTHONHOME="%(self.host_home)s"
+                export PYTHONPATH="%(context.lib_path)s:%(stdlib)s${PYTHONPATH:+:$PYTHONPATH}"
                 ''', locals())))
 
             # Add sysroot to various environment variables. This doesn't help
@@ -233,19 +269,19 @@ class CrossEnvBuilder(venv.EnvBuilder):
                     logger.warning("No libs in sysroot. Does it exist?")
                 else:
                     libs = os.pathsep.join(libs)
-                    fp.write(_f('export LIBRARY_PATH=%(libs)s\n', locals()))
+                    fp.write(F('export LIBRARY_PATH=%(libs)s\n', locals()))
 
                 inc = os.path.join(self.host_sysroot, 'usr', 'include')
                 if not os.path.isdir(inc):
                     logger.warning("No include/ in sysroot. Does it exist?")
                 else:
-                    fp.write(_f('export CPATH=%(inc)s\n', locals()))
+                    fp.write(F('export CPATH=%(inc)s\n', locals()))
 
             for name, assign, val in self.extra_env_vars:
                 if assign == '=':
-                    fp.write(_f('export %(name)s=%(val)s\n', locals()))
+                    fp.write(F('export %(name)s=%(val)s\n', locals()))
                 elif assign == '?=':
-                    fp.write(_f('[ -z "${%(name)s}" ] && export %(name)s=%(val)s\n',
+                    fp.write(F('[ -z "${%(name)s}" ] && export %(name)s=%(val)s\n',
                         locals()))
                 else:
                     assert False, "Bad assignment value %r" % assign
@@ -253,50 +289,64 @@ class CrossEnvBuilder(venv.EnvBuilder):
             # We want to alter argv[0] so that sys.executable will be correct.
             # We can't do this in a POSIX-compliant way, so we'll break
             # into Python
-            fp.write(dedent(_f('''\
+            fp.write(dedent(F('''\
                 exec %(context.build_env_exe)s -c '
                 import sys
                 import os
-                os.execv("%(context.real_env_exe)s", sys.argv[1:])
-                ' "$0" "$@"
+                os.execv("%(context.build_env_exe)s", sys.argv[1:])
+                ' "%(context.host_bin_path)s/$_base" "$@"
                 ''', locals())))
-        os.chmod(context.env_exe, 0o755)
+        os.chmod(context.host_env_exe, 0o755)
+        for exe in ('python', 'python3'):
+            exe = os.path.join(context.host_bin_path, exe)
+            if not os.path.exists(exe):
+                os.symlink(context.python_exe, exe)
 
         # Modifiy site.py
         script = os.path.join('scripts', 'site.py')
         src = pkg_resources.resource_string(__name__, script).decode()
 
         build_path = context.build_sys_path
-        src = _f(src, locals())
-        dst_name = os.path.join(context.cross_lib, 'site.py')
+        src = F(src, locals())
+        dst_name = os.path.join(context.lib_path, 'site.py')
         with open(dst_name, 'w') as fp:
             fp.write(src)
 
         # Copy sysconfigdata
-        shutil.copy(self.host_sysconfigdata_file, context.cross_lib)
-        
+        shutil.copy(self.host_sysconfigdata_file, context.lib_path)
+       
+        # host-python is ready.
+        logger.info("Installing host-pip")
+        subprocess.check_call([context.host_env_exe, '-m', 'ensurepip',
+            '--default-pip', '--upgrade'])
+
         # Add host-python alias to the path. This is just for
         # convenience and clarity.
-        for exe in os.listdir(context.bin_path):
-            target = os.path.join(context.bin_path, exe)
-            if not exe.startswith('host-') and os.access(target, os.X_OK):
-                dst = os.path.join(context.bin_path, 'host-' + exe)
-                os.symlink(exe, dst)
+        for exe in os.listdir(context.host_bin_path):
+            target = os.path.join(context.host_bin_path, exe)
+            if not os.path.isfile(target) or not os.access(target, os.X_OK):
+                continue
+            dest = os.path.join(context.bin_path, 'host-' + exe)
+            os.symlink(target, dest)
 
-        # Add build-python and build-pip to the path. These need to be
-        # scripts. If we just symlink/hardlink, we'll grab the wrong env.
+        # Add build-python and build-pip to the path.
         for exe in os.listdir(context.build_bin_path):
             target = os.path.join(context.build_bin_path, exe)
             if not os.path.isfile(target) or not os.access(target, os.X_OK):
                 continue
             dest = os.path.join(context.bin_path, 'build-' + exe)
-            with open(dest, 'w') as fp:
-                fp.write(dedent(_f('''\
-                    #!/bin/sh
-                    exec %(target)s "$@"
-                    ''', locals())))
-            os.chmod(dest, 0o755)
+            os.symlink(target, dest)
 
+
+
+    def post_setup(self, context):
+        logger.info("Finishing up...")
+        activate = os.path.join(context.bin_path, 'activate')
+        with open(activate, 'w') as fp:
+            fp.write(dedent(F('''\
+                . %(context.host_activate)s
+                export PATH=%(context.bin_path)s:$PATH
+                ''', locals())))
 
 def parse_env_vars(env_vars):
     parsed = []
@@ -325,12 +375,31 @@ def main():
                 Create virtual Python environments for cross compiling
                 """)
 
+    parser.add_argument('--host-prefix', action='store',
+        help="""Specify the directory where host-python files will be stored.
+                By default, this is within <ENV_DIR>/host. You can override
+                this to have host packages installed in an existing sysroot,
+                for example.""")
     parser.add_argument('--system-site-packages', action='store_true',
         help="""Give the *build* python environment access to the system
                 site-packages dir.""")
-    parser.add_argument('--clear', action='store_true',
-        help="""Delete the contents of the environment directoy if it already
-                exists.""")
+    parser.add_argument('--clear', action='store_const', const='default',
+        help="""Delete the contents of the environment directory if it already
+                exists. This clears build-python, but host-python will be
+                cleared only if --host-prefix was not set. See also
+                --clear-both, --clear-host, and --clear-build.""")
+    parser.add_argument('--clear-host', action='store_const', const='host',
+        dest='clear',
+        help="""This clears host-python only. See also --clear, --clear-both,
+                and --clear-build.""")
+    parser.add_argument('--clear-build', action='store_const', const='build',
+        dest='clear',
+        help="""This clears build-python only. See also --clear, --clear-both,
+                and --clear-host.""")
+    parser.add_argument('--clear-both', action='store_const', const='both',
+        dest='clear',
+        help="""This clears both host-python and build-python. See also
+                --clear, --clear-both, and --clear-host.""")
     parser.add_argument('--prompt', action='store',
         help="""Provides an alternative prompt prefix for this environment.""")
     parser.add_argument('--env', action='append', default=[],
