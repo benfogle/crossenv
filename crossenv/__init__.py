@@ -172,6 +172,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
         # We'll need a venv for the build python. This will
         # let us easily install setup_requires stuff.
+        logger.info("Setting up build-python environment")
         context.build_python_dir = os.path.join(context.env_dir, 'lib', 'build')
         env = venv.EnvBuilder(
                 system_site_packages=self.build_system_site_packages,
@@ -190,6 +191,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
             line = line.strip()
             if line:
                 context.build_sys_path.append(line)
+        logger.info("Done setting up build-python")
 
     def post_setup(self, context):
         # Replace python binary with a script that sets the environment
@@ -337,6 +339,9 @@ def main():
                 build executable. May be given multiple times. The form
                 FOO?=BAR is also allowed to assign FOO only if not already
                 set.""")
+    parser.add_argument('-v', '--verbose', action='count', default=0,
+        help="""Verbose mode. May be specified multiple times to increase
+                verbosity.""")
     parser.add_argument('HOST_PYTHON',
         help="""The host Python to use. This should be the path to the Python
                 executable, which may be in the source directory or an installed
@@ -345,11 +350,24 @@ def main():
         help="""A directory to create the environment in.""")
 
     args = parser.parse_args()
-    env = parse_env_vars(args.env)
-    builder = CrossEnvBuilder(host_python=args.HOST_PYTHON,
-            build_system_site_packages=args.system_site_packages,
-            clear=args.clear,
-            prompt=args.prompt,
-            extra_env_vars=env)
-    for env_dir in args.ENV_DIR:
-        builder.create(env_dir)
+
+    if args.verbose == 1:
+        level = logging.INFO
+    elif args.verbose > 1:
+        level = logging.DEBUG
+    else:
+        level = logging.WARNING
+    logging.basicConfig(level=level, format='%(levelname)s: %(message)s')
+
+    try:
+        env = parse_env_vars(args.env)
+        builder = CrossEnvBuilder(host_python=args.HOST_PYTHON,
+                build_system_site_packages=args.system_site_packages,
+                clear=args.clear,
+                prompt=args.prompt,
+                extra_env_vars=env)
+        for env_dir in args.ENV_DIR:
+            builder.create(env_dir)
+    except Exception as e:
+        logger.error('%s', e)
+        logger.debug('Traceback:', exc_info=True)
