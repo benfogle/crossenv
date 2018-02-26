@@ -10,7 +10,7 @@ import sysconfig
 # Fixup paths so we can import packages installed on the build
 # system correctly.
 sys.cross_compiling = 'crossenv'
-sys.build_path = {build_path}
+sys.build_path = %(build_path)s
 
 abiflags = sysconfig.get_config_var('ABIFLAGS')
 if abiflags is None:

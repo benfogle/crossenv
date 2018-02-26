@@ -13,6 +13,25 @@ import pkg_resources
 
 logger = logging.getLogger(__name__)
 
+# We're using %-style formatting everywhere because it's more convenient for
+# building Python and Bourne Shell source code. We'll build some helpers to
+# make it just a bit more like f-strings.
+
+class FormatMapping:
+    '''Map strings such that %(foo.bar)s works in %-format strings'''
+    def __init__(self, mapping):
+        self.mapping = mapping
+
+    def __getitem__(self, key):
+        parts = key.split('.')
+        obj = self.mapping[parts[0]]
+        for p in parts[1:]:
+            obj = getattr(obj, p)
+        return obj
+
+def _f(s, values):
+    values = FormatMapping(values)
+    return s % values
 
 class CrossEnvBuilder(venv.EnvBuilder):
     def __init__(self, *,
@@ -189,18 +208,18 @@ class CrossEnvBuilder(venv.EnvBuilder):
         # Also: 'stdlib' might not be acurate if build-python is in a build
         # directory.
         stdlib = os.path.abspath(os.path.dirname(os.__file__))
-        pypath = f'$VIRTUAL_ENV/lib/cross:{stdlib}'
+        pypath = _f('$VIRTUAL_ENV/lib/cross:%(stdlib)s', locals())
 
         with open(context.env_exe, 'w') as fp:
-            fp.write(dedent(f'''\
+            fp.write(dedent(_f('''\
                 #!/bin/sh
                 export PYTHON_CROSSENV=1
-                export _PYTHON_PROJECT_BASE={self.host_project_base}
-                export _PYTHON_HOST_PLATFORM={self.host_platform}
-                export _PYTHON_SYSCONFIGDATA_NAME={sysconfig_name}
-                export PYTHONHOME={self.host_home}
-                export PYTHONPATH={pypath}${{PYTHONPATH:+:$PYTHONPATH}}
-                '''))
+                export _PYTHON_PROJECT_BASE=%(self.host_project_base)s
+                export _PYTHON_HOST_PLATFORM=%(self.host_platform)s
+                export _PYTHON_SYSCONFIGDATA_NAME=%(sysconfig_name)s
+                export PYTHONHOME=%(self.host_home)s
+                export PYTHONPATH=%(pypath)s${PYTHONPATH:+:$PYTHONPATH}
+                ''', locals())))
 
             # Add sysroot to various environment variables. This doesn't help
             # compiling, but some packages try to do manual checks for existance
@@ -212,39 +231,41 @@ class CrossEnvBuilder(venv.EnvBuilder):
                     logger.warning("No libs in sysroot. Does it exist?")
                 else:
                     libs = os.pathsep.join(libs)
-                    fp.write(f'export LIBRARY_PATH={libs}\n')
+                    fp.write(_f('export LIBRARY_PATH=%(libs)s\n', locals()))
 
                 inc = os.path.join(self.host_sysroot, 'usr', 'include')
                 if not os.path.isdir(inc):
                     logger.warning("No include/ in sysroot. Does it exist?")
                 else:
-                    fp.write(f'export CPATH={inc}\n')
+                    fp.write(_f('export CPATH=%(inc)s\n', locals()))
 
             for name, assign, val in self.extra_env_vars:
                 if assign == '=':
-                    fp.write(f'export {name}={val}\n')
+                    fp.write(_f('export %(name)s=%(val)s\n', locals()))
                 elif assign == '?=':
-                    fp.write(f'[ -z "${{{name}}}" ] && export {name}={val}\n')
+                    fp.write(_f('[ -z "${%(name)s}" ] && export %(name)s=%(val)s\n',
+                        locals()))
                 else:
-                    assert False, f"Bad assignment value {assign!r}"
+                    assert False, "Bad assignment value %r" % assign
 
             # We want to alter argv[0] so that sys.executable will be correct.
             # We can't do this in a POSIX-compliant way, so we'll break
             # into Python
-            fp.write(dedent(f'''\
-                exec {context.build_env_exe} -c '
+            fp.write(dedent(_f('''\
+                exec %(context.build_env_exe)s -c '
                 import sys
                 import os
-                os.execv("{context.real_env_exe}", sys.argv[1:])
+                os.execv("%(context.real_env_exe)s", sys.argv[1:])
                 ' "$0" "$@"
-                '''))
+                ''', locals())))
         os.chmod(context.env_exe, 0o755)
 
         # Modifiy site.py
         script = os.path.join('scripts', 'site.py')
         src = pkg_resources.resource_string(__name__, script).decode()
 
-        src = src.format(build_path=context.build_sys_path)
+        build_path = context.build_sys_path
+        src = _f(src, locals())
         dst_name = os.path.join(context.cross_lib, 'site.py')
         with open(dst_name, 'w') as fp:
             fp.write(src)
@@ -268,10 +289,10 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 continue
             dest = os.path.join(context.bin_path, 'build-' + exe)
             with open(dest, 'w') as fp:
-                fp.write(dedent(f'''\
+                fp.write(dedent(_f('''\
                     #!/bin/sh
-                    exec {target} "$@"
-                    '''))
+                    exec %(target)s "$@"
+                    ''', locals())))
             os.chmod(dest, 0o755)
 
 
