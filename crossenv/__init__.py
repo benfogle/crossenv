@@ -61,8 +61,6 @@ class CrossEnvBuilder(venv.EnvBuilder):
                             of 'default', 'host', 'build', or 'both'. 'default'
                             means to clear host only when host_prefix is None.
     
-    :param prompt:          Alternative terminal prefix for the environment.
-
     :param host_prefix:     Explicitly set the location of the host-python
                             virtual environment.
 
@@ -77,7 +75,6 @@ class CrossEnvBuilder(venv.EnvBuilder):
             extra_env_vars=(),
             build_system_site_packages=False,
             clear=False,
-            prompt=None,
             host_prefix=None,
             with_pip_host=False,
             with_pip_build=False):
@@ -100,8 +97,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 clear=False,
                 symlinks=True,
                 upgrade=False,
-                with_pip=False,
-                prompt=prompt)
+                with_pip=False)
 
     def find_host_python(self, host):
         """
@@ -112,10 +108,10 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
         host = os.path.abspath(host)
         if not os.path.exists(host):
-            raise FileNotFoundError(f"{host} does not exist")
+            raise FileNotFoundError("%s does not exist" % host)
         elif not os.path.isfile(host):
-            raise ValueError(f"Expected a path to a Python executable. "
-                             f"Got {host}")
+            raise ValueError("Expected a path to a Python executable. "
+                             "Got %s" % host)
         else:
             self.host_project_base = os.path.dirname(host)
 
@@ -126,8 +122,8 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 with open(pybuilddir, 'r') as fp:
                     build_dir = fp.read().strip()
             except IOError:
-                raise IOError(f"Cannot read {pybuilddir}: "
-                              f"Build the host Python first!") from None
+                raise IOError(
+                    "Cannot read %s: Build the host Python first " % s) from None
 
             self.host_home = self.host_project_base
             sysconfigdata = glob.glob(
@@ -452,14 +448,14 @@ def parse_env_vars(env_vars):
         try:
             name, value = spec.split('=',1)
         except IndexError:
-            raise ValueError(f"Invalid variable {spec!r}. Must be in the form "
-                              "NAME=VALUE or NAME?=VALUE")
+            raise ValueError("Invalid variable %r. Must be in the form "
+                              "NAME=VALUE or NAME?=VALUE" % spec)
         if name.endswith('?'):
             assign = '?='
             name = name[:-1]
 
         if not name.isidentifier():
-            raise ValueError(f"Invalid variable name {name!r}")
+            raise ValueError("Invalid variable name %r" % name)
 
         parsed.append((name, assign, value))
     return parsed
@@ -505,8 +501,6 @@ def main():
     parser.add_argument('--without-pip-host', action='store_true',
         help="""Skips installing or upgrading pip in the host virtual
                 environment.""")
-    parser.add_argument('--prompt', action='store',
-        help="""Provides an alternative prompt prefix for this environment.""")
     parser.add_argument('--env', action='append', default=[],
         help="""An environment variable in the form FOO=BAR that will be
                 added to the environment just before executing the python
@@ -542,7 +536,6 @@ def main():
         builder = CrossEnvBuilder(host_python=args.HOST_PYTHON,
                 build_system_site_packages=args.system_site_packages,
                 clear=args.clear,
-                prompt=args.prompt,
                 extra_env_vars=env,
                 with_pip_host=not args.without_pip_host,
                 with_pip_build=not args.without_pip_build,
