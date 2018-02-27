@@ -304,7 +304,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
         for exe in ('python', 'python3'):
             exe = os.path.join(context.host_bin_path, exe)
             if not os.path.exists(exe):
-                os.symlink(context.python_exe, exe)
+                utils.symlink(context.python_exe, exe)
 
         # Modifiy site.py
         script = os.path.join('scripts', 'site.py')
@@ -332,7 +332,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
             if not os.path.isfile(target) or not os.access(target, os.X_OK):
                 continue
             dest = os.path.join(context.bin_path, 'host-' + exe)
-            os.symlink(target, dest)
+            utils.symlink(target, dest)
 
         # Add build-python and build-pip to the path.
         for exe in os.listdir(context.build_bin_path):
@@ -340,7 +340,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
             if not os.path.isfile(target) or not os.access(target, os.X_OK):
                 continue
             dest = os.path.join(context.bin_path, 'build-' + exe)
-            os.symlink(target, dest)
+            utils.symlink(target, dest)
 
 
 

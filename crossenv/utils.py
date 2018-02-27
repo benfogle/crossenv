@@ -50,3 +50,9 @@ def remove_path(p):
         os.unlink(p)
     else:
         shutil.rmtree(p)
+
+def symlink(src, dst):
+    if os.path.exists(dst):
+        os.unlink(dst)
+    os.symlink(src, dst)
+
