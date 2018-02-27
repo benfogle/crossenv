@@ -18,7 +18,60 @@ from . import utils
 logger = logging.getLogger(__name__)
 
 class CrossEnvBuilder(venv.EnvBuilder):
+    """
+    A class to build a cross-compiling virtual environment useful for
+    cross compiling wheels or developing firmware images.
 
+    Here the `host` is the device on which the final code will run, such
+    as an embedded system of some sort. `build` is the machine doing the
+    compiling, usually a desktop or server. Usually the `host` Python
+    executables won't run on the `build` machine.
+
+    When we refer to `build-python`, we mean the current interpreter.  (It is
+    *always* the current interpreter.) However, when we refer to `host-python`,
+    we mean an interpreter that runs on `build` but reports system information
+    as if it were running on `host`. In other words, `host-python` does the
+    cross compiling, and is what this class will create for us.
+
+    You must have the toolchain used to compile the host Python binary
+    available when using this virtual environment. The virtual environment
+    will pick the correct compiler based on info recorded when the host
+    Python binary was compiled.
+
+    :param host_python:     The path to the host Python binary. This may be in
+                            a build directory (i.e., after `make`), or in an
+                            install directory (after `make install`).  It
+                            *must* be the exact same version as build-python.
+
+    :param extra_env_vars:  When host-python starts, this is an iterable of
+                            (name, op, value) tuples. op may be one of '=' to
+                            indicate that the variable will be set
+                            unconditionally, or '?=' to indicate that the
+                            variable will be set only if not already set by the
+                            environment.
+
+    :param build_system_site_packages:
+                            Whether or not build-python's virtual environment
+                            will have access to the system site packages.
+                            host-python never has access, for obvious reasons.
+
+    :param clear:           Whether to delete the contents of the environment
+                            directories if they already exist, before
+                            environment creation. May be a false value, or one
+                            of 'default', 'host', 'build', or 'both'. 'default'
+                            means to clear host only when host_prefix is None.
+    
+    :param prompt:          Alternative terminal prefix for the environment.
+
+    :param host_prefix:     Explicitly set the location of the host-python
+                            virtual environment.
+
+    :param with_pip_host:   If True, ensure pip is installed in the host-python
+                            virtual environment.
+
+    :param with_pip_build:  If True, ensure pip is installed in the
+                            build-python virtual environment.
+    """
     def __init__(self, *,
             host_python,
             extra_env_vars=(),
@@ -51,9 +104,10 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 prompt=prompt)
 
     def find_host_python(self, host):
-        """Find Python paths and other info based on a path.
-        The path may be a path to a binary, or a directory like you'd see in
-        sys.prefix
+        """
+        Find Python paths and other info based on a path.
+
+        :param host:    Path to the host Python executable.
         """
 
         host = os.path.abspath(host)
@@ -130,6 +184,11 @@ class CrossEnvBuilder(venv.EnvBuilder):
                     break
 
     def find_compiler_info(self):
+        """
+        Query the compiler for extra info useful for cross-compiling,
+        and also check that it exists.
+        """
+
         def run_compiler(arg):
             cmdline = [self.host_cc, arg]
             try:
@@ -139,15 +198,22 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
         self.host_sysroot = None
 
-        # TODO: Clang
         if run_compiler('--version') is None:
+            # I guess we could continue...but why?
             raise RuntimeError(
                 "Cannot run cross-compiler! Extension modules won't build!")
             return
 
+        # TODO: Clang doesn't have this option
         self.host_sysroot = run_compiler('-print-sysroot').strip()
 
     def create(self, env_dir):
+        """
+        Create a cross virtual environment in a directory
+
+        :param env_dir: The target directory to create an environment in.
+        """
+
         env_dir = os.path.abspath(env_dir)
         context = self.ensure_directories(env_dir)
         self.make_build_python(context)
@@ -155,6 +221,13 @@ class CrossEnvBuilder(venv.EnvBuilder):
         self.post_setup(context)
 
     def ensure_directories(self, env_dir):
+        """
+        Create the directories for the environment.
+
+        Returns a context object which holds paths in the environment,
+        for use by subsequent logic.
+        """
+
         # Directory structure:
         #
         # ENV_DIR/
@@ -176,6 +249,10 @@ class CrossEnvBuilder(venv.EnvBuilder):
         return context
 
     def make_build_python(self, context):
+        """
+        Assemble the build-python virtual environment
+        """
+
         context.build_env_dir = os.path.join(context.env_dir, 'build')
         logger.info("Creating build-python environment")
         env = venv.EnvBuilder(
@@ -200,6 +277,10 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 context.build_sys_path.append(line)
 
     def make_host_python(self, context):
+        """
+        Assemble the host-python virtual environment
+        """
+
         logger.info("Creating host-python environment")
         if self.host_prefix:
             context.host_env_dir = self.host_prefix
@@ -245,7 +326,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
         # build directory, rather than installed, then our modifications
         # prevent build-python from finding its pure-Python libs, which
         # will cause a crash on startup. Add them back to PYTHONPATH.
-        # Also: 'stdlib' might not be acurate if build-python is in a build
+        # Also: 'stdlib' might not be accurate if build-python is in a build
         # directory.
         stdlib = os.path.abspath(os.path.dirname(os.__file__))
 
@@ -264,7 +345,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 ''', locals())))
 
             # Add sysroot to various environment variables. This doesn't help
-            # compiling, but some packages try to do manual checks for existance
+            # compiling, but some packages try to do manual checks for existence
             # of headers and libraries. This will help them find things.
             if self.host_sysroot:
                 libs = os.path.join(self.host_sysroot, 'usr', 'lib*')
@@ -325,6 +406,11 @@ class CrossEnvBuilder(venv.EnvBuilder):
             subprocess.check_call([context.host_env_exe, '-m', 'ensurepip',
                 '--default-pip', '--upgrade'])
 
+    def post_setup(self, context):
+        """
+        Extra processing. Put scripts/binaries in the right place.
+        """
+
         # Add host-python alias to the path. This is just for
         # convenience and clarity.
         for exe in os.listdir(context.host_bin_path):
@@ -342,9 +428,6 @@ class CrossEnvBuilder(venv.EnvBuilder):
             dest = os.path.join(context.bin_path, 'build-' + exe)
             utils.symlink(target, dest)
 
-
-
-    def post_setup(self, context):
         logger.info("Finishing up...")
         activate = os.path.join(context.bin_path, 'activate')
         with open(activate, 'w') as fp:
@@ -354,6 +437,14 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 ''', locals())))
 
 def parse_env_vars(env_vars):
+    """Convert string descriptions of environment variable assignment into
+    something that CrossEnvBuilder understands.
+
+    :param env_vars:    An iterable of strings in the form 'FOO=BAR' or
+                        'FOO?=BAR'
+    :returns:           A list of (name, op, value)
+    """
+
     parsed = []
     for spec in env_vars:
         spec = spec.lstrip()
@@ -384,7 +475,7 @@ def main():
         help="""Specify the directory where host-python files will be stored.
                 By default, this is within <ENV_DIR>/host. You can override
                 this to have host packages installed in an existing sysroot,
-                for example.""")
+                for example. Watch out though: this will write to bin.""")
     parser.add_argument('--system-site-packages', action='store_true',
         help="""Give the *build* python environment access to the system
                 site-packages dir.""")

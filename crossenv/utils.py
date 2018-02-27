@@ -26,6 +26,9 @@ def F(s, values):
 
 @contextlib.contextmanager
 def overwrite_file(name, mode='w', perms=None):
+    '''A context manager that will overwrite the given file
+    only after it was closed with no error'''
+
     fp = tempfile.NamedTemporaryFile(mode, delete=False)
     try:
         yield fp
