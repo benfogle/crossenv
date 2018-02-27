@@ -25,12 +25,16 @@ class CrossEnvBuilder(venv.EnvBuilder):
             build_system_site_packages=False,
             clear=False,
             prompt=None,
-            host_prefix=None):
+            host_prefix=None,
+            with_pip_host=False,
+            with_pip_build=False):
         self.find_host_python(host_python)
         self.find_compiler_info()
         self.build_system_site_packages = build_system_site_packages
         self.extra_env_vars = extra_env_vars
         self.clear_build = clear in ('default', 'build', 'both')
+        self.with_pip_host = with_pip_host
+        self.with_pip_build = with_pip_build
         if host_prefix:
             self.host_prefix = os.path.abspath(host_prefix)
             self.clear_host = clear in ('host', 'both')
@@ -177,7 +181,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
         env = venv.EnvBuilder(
                 system_site_packages=self.build_system_site_packages,
                 clear=self.clear_build,
-                with_pip=True)
+                with_pip=self.with_pip_build)
         env.create(context.build_env_dir)
         context.build_bin_path = os.path.join(context.build_env_dir, 'bin')
         context.build_env_exe = os.path.join(
@@ -316,9 +320,10 @@ class CrossEnvBuilder(venv.EnvBuilder):
         shutil.copy(self.host_sysconfigdata_file, context.lib_path)
        
         # host-python is ready.
-        logger.info("Installing host-pip")
-        subprocess.check_call([context.host_env_exe, '-m', 'ensurepip',
-            '--default-pip', '--upgrade'])
+        if self.with_pip_host:
+            logger.info("Installing host-pip")
+            subprocess.check_call([context.host_env_exe, '-m', 'ensurepip',
+                '--default-pip', '--upgrade'])
 
         # Add host-python alias to the path. This is just for
         # convenience and clarity.
@@ -400,6 +405,15 @@ def main():
         dest='clear',
         help="""This clears both host-python and build-python. See also
                 --clear, --clear-both, and --clear-host.""")
+    parser.add_argument('--without-pip', action='store_true',
+        help="""Skips installing or upgrading pip in both the build and host
+                virtual environments. (Pip is bootstrapped by default.)""")
+    parser.add_argument('--without-pip-build', action='store_true',
+        help="""Skips installing or upgrading pip the build virtual
+                environments.""")
+    parser.add_argument('--without-pip-host', action='store_true',
+        help="""Skips installing or upgrading pip in the host virtual
+                environment.""")
     parser.add_argument('--prompt', action='store',
         help="""Provides an alternative prompt prefix for this environment.""")
     parser.add_argument('--env', action='append', default=[],
@@ -429,12 +443,19 @@ def main():
     logging.basicConfig(level=level, format='%(levelname)s: %(message)s')
 
     try:
+        if args.without_pip:
+            args.without_pip_host = True
+            args.without_pip_build = True
         env = parse_env_vars(args.env)
+
         builder = CrossEnvBuilder(host_python=args.HOST_PYTHON,
                 build_system_site_packages=args.system_site_packages,
                 clear=args.clear,
                 prompt=args.prompt,
-                extra_env_vars=env)
+                extra_env_vars=env,
+                with_pip_host=not args.without_pip_host,
+                with_pip_build=not args.without_pip_build,
+                )
         for env_dir in args.ENV_DIR:
             builder.create(env_dir)
     except Exception as e:
