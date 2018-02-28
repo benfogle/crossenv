@@ -1,3 +1,4 @@
+# Import only what we absolutely need before the path fixup
 import importlib.machinery
 import sys
 import os
@@ -10,7 +11,7 @@ import sysconfig
 # Fixup paths so we can import packages installed on the build
 # system correctly.
 sys.cross_compiling = 'crossenv'
-sys.build_path = %(build_path)s
+sys.build_path = %(context.build_sys_path)r
 
 abiflags = sysconfig.get_config_var('ABIFLAGS')
 if abiflags is None:
@@ -58,6 +59,14 @@ for index, p in enumerate(sys.path):
         del sys.path[index:index+2]
         break
 
+
+# A this point we can import more things
+from configparser import ConfigParser
+from collections import namedtuple
+from functools import wraps
+config = ConfigParser()
+config.read(%(context.crossenv_cfg)r)
+
 # Fixup sys:
 # sysconfig should be correct, but some little parts of
 # sys are hardcoded (but changable)
@@ -69,6 +78,49 @@ if multiarch is None:
         pass
 else:
     sys.implementation._multiarch = multiarch
+
+# Fixup os.uname, which should fix most of platform module
+uname_result_type = namedtuple('uname_result',
+        'sysname nodename release version machine')
+uname_result = uname_result_type(
+        config.get('uname', 'sysname', fallback=''),
+        config.get('uname', 'nodename', fallback=''),
+        config.get('uname', 'release', fallback=''),
+        config.get('uname', 'version', fallback=''),
+        config.get('uname', 'machine', fallback=''))
+
+@wraps(os.uname)
+def uname():
+    return uname_result
+os.uname = uname
+
+# Fixup platform
+import platform
+processor = config.get('uname', 'processor', fallback=None)
+if processor is None:
+    processor = config.get('uname', 'machine', fallback=None)
+uname_result2 = platform.uname_result(
+        config.get('uname', 'sysname', fallback=''),
+        config.get('uname', 'nodename', fallback=''),
+        config.get('uname', 'release', fallback=''),
+        config.get('uname', 'version', fallback=''),
+        config.get('uname', 'machine', fallback=''),
+        processor)
+@wraps(platform.uname)
+def uname2():
+    return uname_result2
+platform.uname = uname2
+
+if hasattr(platform, '_linux_distribution'):
+    @wraps(platform._linux_distribution)
+    def dist(*args, **kwargs):
+        return ('', '', '')
+    platform._linux_distribution = dist
+
+@wraps(platform.libc_ver)
+def libc_ver(*args, **kwargs):
+    return ('', '')
+platform.libc_ver = libc_ver
 
 # importlib.reload would probably work, but just to be safe we'll try to 
 # have the modules' __dict__ completely clean.

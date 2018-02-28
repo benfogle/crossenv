@@ -9,8 +9,7 @@ import subprocess
 import logging
 import importlib
 import types
-
-import pkg_resources
+from configparser import ConfigParser
 
 from .utils import F
 from . import utils
@@ -212,6 +211,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
         env_dir = os.path.abspath(env_dir)
         context = self.ensure_directories(env_dir)
+        self.create_configuration(context)
         self.make_build_python(context)
         self.make_host_python(context)
         self.post_setup(context)
@@ -243,6 +243,27 @@ class CrossEnvBuilder(venv.EnvBuilder):
         context.lib_path = os.path.join(env_dir, 'lib')
         utils.mkdir_if_needed(context.lib_path)
         return context
+
+    def create_configuration(self, context):
+        """
+        Create configuration files. We don't have a pyvenv.cfg file in the
+        base directory, but we do have a uname crossenv.cfg file.
+        """
+
+        # Do our best to guess defaults
+        config = ConfigParser()
+        sysname, machine = self.host_platform.split('-')
+        config['uname'] = {
+            'sysname' : sysname.title(),
+            'nodename' : 'build',
+            'release' : '',
+            'version' : '',
+            'machine' : machine,
+        }
+
+        context.crossenv_cfg = os.path.join(context.env_dir, 'crossenv.cfg')
+        with utils.overwrite_file(context.crossenv_cfg) as fp:
+            config.write(fp)
 
     def make_build_python(self, context):
         """
@@ -327,12 +348,10 @@ class CrossEnvBuilder(venv.EnvBuilder):
         stdlib = os.path.abspath(os.path.dirname(os.__file__))
 
         with open(context.host_env_exe, 'w') as fp:
-            fp.write(dedent('''\
+            fp.write(dedent(F('''\
                 #!/bin/sh
                 _base=${0##*/}
                 export PYTHON_CROSSENV=1
-                '''))
-            fp.write(dedent(F('''\
                 export _PYTHON_PROJECT_BASE="%(self.host_project_base)s"
                 export _PYTHON_HOST_PLATFORM="%(self.host_platform)s"
                 export _PYTHON_SYSCONFIGDATA_NAME="%(sysconfig_name)s"
@@ -383,17 +402,8 @@ class CrossEnvBuilder(venv.EnvBuilder):
             if not os.path.exists(exe):
                 utils.symlink(context.python_exe, exe)
 
-        # Modifiy site.py
-        script = os.path.join('scripts', 'site.py')
-        src = pkg_resources.resource_string(__name__, script).decode()
-
-        build_path = context.build_sys_path
-        src = F(src, locals())
-        dst_name = os.path.join(context.lib_path, 'site.py')
-        with open(dst_name, 'w') as fp:
-            fp.write(src)
-
-        # Copy sysconfigdata
+        # Install patches to environment
+        utils.install_script('site.py', context.lib_path, locals())
         shutil.copy(self.host_sysconfigdata_file, context.lib_path)
        
         # host-python is ready.

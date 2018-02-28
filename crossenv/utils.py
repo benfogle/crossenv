@@ -3,6 +3,8 @@ import tempfile
 import shutil
 import os
 
+import pkg_resources
+
 # We're using %-style formatting everywhere because it's more convenient for
 # building Python and Bourne Shell source code. We'll build some helpers to
 # make it just a bit more like f-strings.
@@ -59,3 +61,12 @@ def symlink(src, dst):
         os.unlink(dst)
     os.symlink(src, dst)
 
+def install_script(name, dst_dir, values, perms=0o755):
+    srcname = os.path.join('scripts', name)
+    src = pkg_resources.resource_string(__package__, srcname)
+    src = F(src.decode(), values)
+    dst = os.path.join(dst_dir, name)
+    mkdir_if_needed(os.path.dirname(dst))
+
+    with overwrite_file(dst, perms=perms) as fp:
+        fp.write(src)
