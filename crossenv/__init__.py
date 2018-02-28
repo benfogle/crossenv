@@ -105,6 +105,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
         :param host:    Path to the host Python executable.
         """
 
+        build_version = sysconfig.get_config_var('VERSION')
         host = os.path.abspath(host)
         if not os.path.exists(host):
             raise FileNotFoundError("%s does not exist" % host)
@@ -141,6 +142,22 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 sysconfigdata = glob.glob(
                         os.path.join(libdir, '*', '_sysconfigdata*.py'))
 
+                if not sysconfigdata:
+                    # Try to make sense of the error. Probably a version error.
+                    anylib = os.path.join(self.host_home, 'lib', 'python*')
+                    glob1 = os.path.join(anylib, '_sysconfigdata*.py')
+                    glob2 = os.path.join(anylib, '*', '_sysconfigdata*.py')
+                    found = glob.glob(glob1)
+                    found.extend(glob.glob(glob2))
+
+                    if found:
+                        found = os.path.basename(os.path.dirname(found[0]))
+                        host_version = found[6:]
+                        raise ValueError(
+                                "Version mismatch: host=%s, build=%s" % (
+                                    host_version, build_version))
+                    # Let it error out later with the default message
+
             makefile = glob.glob(os.path.join(libdir, '*', 'Makefile'))
             if not makefile:
                 self.host_makefile = '' # fail later
@@ -165,6 +182,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
         self.host_sysconfigdata = syscfg
 
         self.host_cc = syscfg.build_time_vars['CC']
+        self.host_version = syscfg.build_time_vars['VERSION']
 
         # Ask the makefile a few questions too
         if not os.path.exists(self.host_makefile):
@@ -177,6 +195,11 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 if line.startswith('_PYTHON_HOST_PLATFORM='):
                     self.host_platform = line.split('=',1)[-1]
                     break
+
+        # Sanity checks
+        if self.host_version != build_version:
+            raise ValueError("Version mismatch: host=%s, build=%s" % (
+                self.host_version, build_version))
 
     def find_compiler_info(self):
         """
