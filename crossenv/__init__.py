@@ -27,9 +27,10 @@ class CrossEnvBuilder(venv.EnvBuilder):
     executables won't run on the `build` machine.
 
     When we refer to `build-python`, we mean the current interpreter.  (It is
-    *always* the current interpreter.) However, when we refer to `host-python`,
+    *always* the current interpreter.) When we refer to `host-pytohn`, we mean
+    the interpreter that will run on the host. When we refer to `cross-python`,
     we mean an interpreter that runs on `build` but reports system information
-    as if it were running on `host`. In other words, `host-python` does the
+    as if it were running on `host`. In other words, `cross-python` does the
     cross compiling, and is what this class will create for us.
 
     You must have the toolchain used to compile the host Python binary
@@ -42,7 +43,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
                             install directory (after `make install`).  It
                             *must* be the exact same version as build-python.
 
-    :param extra_env_vars:  When host-python starts, this is an iterable of
+    :param extra_env_vars:  When cross-python starts, this is an iterable of
                             (name, op, value) tuples. op may be one of '=' to
                             indicate that the variable will be set
                             unconditionally, or '?=' to indicate that the
@@ -52,21 +53,22 @@ class CrossEnvBuilder(venv.EnvBuilder):
     :param build_system_site_packages:
                             Whether or not build-python's virtual environment
                             will have access to the system site packages.
-                            host-python never has access, for obvious reasons.
+                            cross-python never has access, for obvious reasons.
 
     :param clear:           Whether to delete the contents of the environment
                             directories if they already exist, before
                             environment creation. May be a false value, or one
-                            of 'default', 'host', 'build', or 'both'. 'default'
-                            means to clear host only when host_prefix is None.
+                            of 'default', 'cross', 'build', or 'both'.
+                            'default' means to clear cross only when
+                            cross_prefix is None.
     
-    :param host_prefix:     Explicitly set the location of the host-python
+    :param cross_prefix:    Explicitly set the location of the cross-python
                             virtual environment.
 
-    :param with_pip_host:   If True, ensure pip is installed in the host-python
-                            virtual environment.
+    :param with_cross_pip:  If True, ensure pip is installed in the
+                            cross-python virtual environment.
 
-    :param with_pip_build:  If True, ensure pip is installed in the
+    :param with_build_pip:  If True, ensure pip is installed in the
                             build-python virtual environment.
     """
     def __init__(self, *,
@@ -74,22 +76,22 @@ class CrossEnvBuilder(venv.EnvBuilder):
             extra_env_vars=(),
             build_system_site_packages=False,
             clear=False,
-            host_prefix=None,
-            with_pip_host=False,
-            with_pip_build=False):
+            cross_prefix=None,
+            with_cross_pip=False,
+            with_build_pip=False):
         self.find_host_python(host_python)
         self.find_compiler_info()
         self.build_system_site_packages = build_system_site_packages
         self.extra_env_vars = extra_env_vars
         self.clear_build = clear in ('default', 'build', 'both')
-        self.with_pip_host = with_pip_host
-        self.with_pip_build = with_pip_build
-        if host_prefix:
-            self.host_prefix = os.path.abspath(host_prefix)
-            self.clear_host = clear in ('host', 'both')
+        self.with_cross_pip = with_cross_pip
+        self.with_build_pip = with_build_pip
+        if cross_prefix:
+            self.cross_prefix = os.path.abspath(cross_prefix)
+            self.clear_cross = clear in ('cross', 'both')
         else:
-            self.host_prefix = None
-            self.clear_host = clear in ('default', 'host', 'both')
+            self.cross_prefix = None
+            self.clear_cross = clear in ('default', 'cross', 'both')
 
         super().__init__(
                 system_site_packages=False,
@@ -236,7 +238,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
         context = self.ensure_directories(env_dir)
         self.create_configuration(context)
         self.make_build_python(context)
-        self.make_host_python(context)
+        self.make_cross_python(context)
         self.post_setup(context)
 
     def ensure_directories(self, env_dir):
@@ -250,15 +252,15 @@ class CrossEnvBuilder(venv.EnvBuilder):
         # Directory structure:
         #
         # ENV_DIR/
-        #   host/       host-python venv. Empty bin/
-        #   build/      build-python venv. All scripts, etc. here.
-        #   lib/        cross libs for setting up host-python
+        #   cross/      cross-python venv
+        #   build/      build-python venv
+        #   lib/        libs for setting up cross-python
         #   bin/        holds activate scripts.
 
-        if os.path.exists(env_dir) and (self.clear_host or self.clear_build):
+        if os.path.exists(env_dir) and (self.clear_cross or self.clear_build):
             subdirs = os.listdir(env_dir)
             for sub in subdirs:
-                if sub in ('host', 'build'):
+                if sub in ('cross', 'build'):
                     continue
                 utils.remove_path(os.path.join(env_dir, sub))
 
@@ -298,7 +300,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
         env = venv.EnvBuilder(
                 system_site_packages=self.build_system_site_packages,
                 clear=self.clear_build,
-                with_pip=self.with_pip_build)
+                with_pip=self.with_build_pip)
         env.create(context.build_env_dir)
         context.build_bin_path = os.path.join(context.build_env_dir, 'bin')
         context.build_env_exe = os.path.join(
@@ -316,38 +318,38 @@ class CrossEnvBuilder(venv.EnvBuilder):
             if line:
                 context.build_sys_path.append(line)
 
-    def make_host_python(self, context):
+    def make_cross_python(self, context):
         """
-        Assemble the host-python virtual environment
+        Assemble the cross-python virtual environment
         """
 
-        logger.info("Creating host-python environment")
-        if self.host_prefix:
-            context.host_env_dir = self.host_prefix
+        logger.info("Creating cross-python environment")
+        if self.cross_prefix:
+            context.cross_env_dir = self.cross_prefix
         else:
-            context.host_env_dir = os.path.join(context.env_dir, 'host')
-        clear_host = self.clear in ('default', 'host-only', 'both')
+            context.cross_env_dir = os.path.join(context.env_dir, 'cross')
+        clear_cross = self.clear in ('default', 'cross-only', 'both')
         env = venv.EnvBuilder(
                 system_site_packages=False,
-                clear=self.clear_host,
+                clear=self.clear_cross,
                 symlinks=True,
                 upgrade=False,
                 with_pip=False)
-        env.create(context.host_env_dir)
-        context.host_bin_path = os.path.join(context.host_env_dir, 'bin')
-        context.host_env_exe = os.path.join(
-                context.host_bin_path, context.python_exe)
-        context.host_cfg_path = os.path.join(context.host_env_dir, 'pyvenv.cfg')
-        context.host_activate = os.path.join(context.host_bin_path, 'activate')
+        env.create(context.cross_env_dir)
+        context.cross_bin_path = os.path.join(context.cross_env_dir, 'bin')
+        context.cross_env_exe = os.path.join(
+                context.cross_bin_path, context.python_exe)
+        context.cross_cfg_path = os.path.join(context.cross_env_dir, 'pyvenv.cfg')
+        context.cross_activate = os.path.join(context.cross_bin_path, 'activate')
 
         # Remove binaries. We'll run from elsewhere
-        for exe in os.listdir(context.host_bin_path):
+        for exe in os.listdir(context.cross_bin_path):
             if not exe.startswith('activate'):
-                utils.remove_path(os.path.join(context.host_bin_path, exe))
+                utils.remove_path(os.path.join(context.cross_bin_path, exe))
 
         # Alter pyvenv.cfg
-        with utils.overwrite_file(context.host_cfg_path) as out:
-            with open(context.host_cfg_path) as inp:
+        with utils.overwrite_file(context.cross_cfg_path) as out:
+            with open(context.cross_cfg_path) as inp:
                 for line in inp:
                     if line.split()[0:2] == ['home', '=']:
                         line = 'home = %s\n' % self.host_project_base
@@ -362,7 +364,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
         sysconfig_name = os.path.basename(self.host_sysconfigdata_file)
         sysconfig_name, _ = os.path.splitext(sysconfig_name)
 
-        # If this venv is generated from a host-python still in its
+        # If this venv is generated from a cross-python still in its
         # build directory, rather than installed, then our modifications
         # prevent build-python from finding its pure-Python libs, which
         # will cause a crash on startup. Add them back to PYTHONPATH.
@@ -370,7 +372,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
         # directory.
         stdlib = os.path.abspath(os.path.dirname(os.__file__))
 
-        with open(context.host_env_exe, 'w') as fp:
+        with open(context.cross_env_exe, 'w') as fp:
             fp.write(dedent(F('''\
                 #!/bin/sh
                 _base=${0##*/}
@@ -417,11 +419,11 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 import sys
                 import os
                 os.execv("%(context.build_env_exe)s", sys.argv[1:])
-                ' "%(context.host_bin_path)s/$_base" "$@"
+                ' "%(context.cross_bin_path)s/$_base" "$@"
                 ''', locals())))
-        os.chmod(context.host_env_exe, 0o755)
+        os.chmod(context.cross_env_exe, 0o755)
         for exe in ('python', 'python3'):
-            exe = os.path.join(context.host_bin_path, exe)
+            exe = os.path.join(context.cross_bin_path, exe)
             if not os.path.exists(exe):
                 utils.symlink(context.python_exe, exe)
 
@@ -430,9 +432,9 @@ class CrossEnvBuilder(venv.EnvBuilder):
         shutil.copy(self.host_sysconfigdata_file, context.lib_path)
        
         # host-python is ready.
-        if self.with_pip_host:
-            logger.info("Installing host-pip")
-            subprocess.check_call([context.host_env_exe, '-m', 'ensurepip',
+        if self.with_cross_pip:
+            logger.info("Installing cross-pip")
+            subprocess.check_call([context.cross_env_exe, '-m', 'ensurepip',
                 '--default-pip', '--upgrade'])
 
     def post_setup(self, context):
@@ -440,13 +442,13 @@ class CrossEnvBuilder(venv.EnvBuilder):
         Extra processing. Put scripts/binaries in the right place.
         """
 
-        # Add host-python alias to the path. This is just for
+        # Add cross-python alias to the path. This is just for
         # convenience and clarity.
-        for exe in os.listdir(context.host_bin_path):
-            target = os.path.join(context.host_bin_path, exe)
+        for exe in os.listdir(context.cross_bin_path):
+            target = os.path.join(context.cross_bin_path, exe)
             if not os.path.isfile(target) or not os.access(target, os.X_OK):
                 continue
-            dest = os.path.join(context.bin_path, 'host-' + exe)
+            dest = os.path.join(context.bin_path, 'cross-' + exe)
             utils.symlink(target, dest)
 
         # Add build-python and build-pip to the path.
@@ -461,7 +463,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
         activate = os.path.join(context.bin_path, 'activate')
         with open(activate, 'w') as fp:
             fp.write(dedent(F('''\
-                . %(context.host_activate)s
+                . %(context.cross_activate)s
                 export PATH=%(context.bin_path)s:$PATH
                 ''', locals())))
 
@@ -500,9 +502,9 @@ def main():
                 Create virtual Python environments for cross compiling
                 """)
 
-    parser.add_argument('--host-prefix', action='store',
-        help="""Specify the directory where host-python files will be stored.
-                By default, this is within <ENV_DIR>/host. You can override
+    parser.add_argument('--cross-prefix', action='store',
+        help="""Specify the directory where cross-python files will be stored.
+                By default, this is within <ENV_DIR>/cross. You can override
                 this to have host packages installed in an existing sysroot,
                 for example. Watch out though: this will write to bin.""")
     parser.add_argument('--system-site-packages', action='store_true',
@@ -510,29 +512,29 @@ def main():
                 site-packages dir.""")
     parser.add_argument('--clear', action='store_const', const='default',
         help="""Delete the contents of the environment directory if it already
-                exists. This clears build-python, but host-python will be
-                cleared only if --host-prefix was not set. See also
-                --clear-both, --clear-host, and --clear-build.""")
-    parser.add_argument('--clear-host', action='store_const', const='host',
+                exists. This clears build-python, but cross-python will be
+                cleared only if --cross-prefix was not set. See also
+                --clear-both, --clear-cross, and --clear-build.""")
+    parser.add_argument('--clear-cross', action='store_const', const='cross',
         dest='clear',
-        help="""This clears host-python only. See also --clear, --clear-both,
+        help="""This clears cross-python only. See also --clear, --clear-both,
                 and --clear-build.""")
     parser.add_argument('--clear-build', action='store_const', const='build',
         dest='clear',
         help="""This clears build-python only. See also --clear, --clear-both,
-                and --clear-host.""")
+                and --clear-cross.""")
     parser.add_argument('--clear-both', action='store_const', const='both',
         dest='clear',
-        help="""This clears both host-python and build-python. See also
-                --clear, --clear-both, and --clear-host.""")
+        help="""This clears both cross-python and build-python. See also
+                --clear, --clear-both, and --clear-cross.""")
     parser.add_argument('--without-pip', action='store_true',
-        help="""Skips installing or upgrading pip in both the build and host
+        help="""Skips installing or upgrading pip in both the build and cross
                 virtual environments. (Pip is bootstrapped by default.)""")
-    parser.add_argument('--without-pip-build', action='store_true',
+    parser.add_argument('--without-build-pip', action='store_true',
         help="""Skips installing or upgrading pip the build virtual
                 environments.""")
-    parser.add_argument('--without-pip-host', action='store_true',
-        help="""Skips installing or upgrading pip in the host virtual
+    parser.add_argument('--without-cross-pip', action='store_true',
+        help="""Skips installing or upgrading pip in the cross virtual
                 environment.""")
     parser.add_argument('--env', action='append', default=[],
         help="""An environment variable in the form FOO=BAR that will be
@@ -562,16 +564,16 @@ def main():
 
     try:
         if args.without_pip:
-            args.without_pip_host = True
-            args.without_pip_build = True
+            args.without_cross_pip = True
+            args.without_build_pip = True
         env = parse_env_vars(args.env)
 
         builder = CrossEnvBuilder(host_python=args.HOST_PYTHON,
                 build_system_site_packages=args.system_site_packages,
                 clear=args.clear,
                 extra_env_vars=env,
-                with_pip_host=not args.without_pip_host,
-                with_pip_build=not args.without_pip_build,
+                with_cross_pip=not args.without_cross_pip,
+                with_build_pip=not args.without_build_pip,
                 )
         for env_dir in args.ENV_DIR:
             builder.create(env_dir)
