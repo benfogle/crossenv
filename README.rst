@@ -1,8 +1,6 @@
 Virtual Envrionments for Cross-Compiling Python Extension Modules
 =============================================================================
 
-Complete documentation is coming soon.
-
 Porting a Python app to an embedded device can be complicated. Once you have
 Python built for your system, you may find yourself needing to include many
 third-party libraries. Pure-Python libraries usually just work, but many
@@ -50,6 +48,16 @@ Vocabulary
 +---------------+------------------------------------------------------------+
 
 
+How it works
+-----------------------------------------------------------------------------
+
+Cross-python is set up carefully so that it reports all system information
+exactly as Host-python would. When done correctly, a side effect of this is
+that ``distutils`` and ``setuptools`` will cross-compile when building
+packages. All of the normal packaging machinery still works correctly, so
+dependencies, ABI tags, and so forth all work as expected.
+
+
 Requirements
 -----------------------------------------------------------------------------
 
@@ -60,6 +68,9 @@ You will need:
    *same version* as Build-python.
 3. The cross-compiling toolchain used to make Host-python. Make sure you set
    PATH correctly to use it.
+4. Any libraries your modules depend on, cross-compiled and installed
+   somewhere Cross-python can get to them. For example, the ``cryptography``
+   package depends on OpenSSL and libffi.
 
 
 Installation
@@ -77,12 +88,23 @@ To create the virtual environment::
 
     $ /path/to/build/python3 -m crossenv /path/to/host/python3 venv
 
-This creates a folder named ``venv``. The compiler to use along with any extra
-flags needed are taken from information recorded when Host-python was compiled.
-To activate the environment::
+This creates a folder named ``venv`` that contains two subordinate virtual
+environments: one for Build-python, and one for Cross-python. When activated,
+``python`` (or its alias ``cross-python``) can be used for cross compiling. If
+needed, packages can be installed on Build (e.g., a package requires Cython to
+install) with ``build-python``. There are equivalent ``pip``, ``cross-pip``,
+and ``build-pip`` commands.
+
+The cross-compiler to use, along with any extra flags needed, are taken from
+information recorded when Host-python was compiled.  To activate the
+environment::
 
     $ . venv/bin/activate
-    (cross) $
+
+You can now see that ``python`` seems to think it's running on Host::
+
+    (cross) $ python -m sysconfig
+    ...
 
 Now you can cross compile! To install a package to
 ``venv/cross/lib/python3.6/site-packages``, you can use pip directly::
@@ -102,3 +124,22 @@ You can use ``setup.py`` to build wheels::
     (cross) $ cd numpy-1.14.1
     (cross) $ python setup.py bdist_wheel
     ...
+
+
+Known Limitations
+-----------------------------------------------------------------------------
+
+* When installing scripts, the shebang (``#!``) line is wrong. This will
+  need to be fixed up before using on Host.
+
+* Any dependant libraries used during the build, such as OpenSSL, are *not*
+  packaged in the wheel or install directory. You will need to ensure that
+  these libraries are installed on Host and can be used. This is the normal
+  Python behavior.
+
+* Any setup-time requirement listed in ``setup.py`` under ``setup_requires``
+  will be installed in Cross-python's virtual environment, not Build-python.
+  This will mostly work anyway if they are pure-Python, but for packages
+  with extension modules (Cython, etc.), you will need to install them into
+  Build-python's environment first. It's often a good idea to do a
+  ``build-pip install <whatever>`` prior to ``pip install <whatever>``.
