@@ -452,12 +452,18 @@ class CrossEnvBuilder(venv.EnvBuilder):
             utils.symlink(target, dest)
 
         # Add build-python and build-pip to the path.
+        # Don't trust these to be symlinks. A symlink to Python will mess up
+        # the virtualenv.
         for exe in os.listdir(context.build_bin_path):
             target = os.path.join(context.build_bin_path, exe)
             if not os.path.isfile(target) or not os.access(target, os.X_OK):
                 continue
             dest = os.path.join(context.bin_path, 'build-' + exe)
-            utils.symlink(target, dest)
+            with utils.overwrite_file(dest, perms=0o755) as fp:
+                fp.write(dedent(F('''\
+                    #/bin/sh
+                    exec %(target)s "$@"
+                    ''', locals())))
 
         logger.info("Finishing up...")
         activate = os.path.join(context.bin_path, 'activate')
