@@ -213,7 +213,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
             cmdline = [self.host_cc, arg]
             try:
                 return subprocess.check_output(cmdline, universal_newlines=True)
-            except CalledProcessError:
+            except subprocess.CalledProcessError:
                 return None
 
         self.host_sysroot = None
