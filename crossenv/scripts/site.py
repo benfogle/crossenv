@@ -128,3 +128,50 @@ del sys.modules['site']
 del sys.modules['sysconfig']
 import site
 import sysconfig
+
+# Now modify sys.path in a way that we can selectivly let setuptools know
+# about packages in build-python. This won't change how things are imported:
+# just whether or not setuptools thinks they are installed.
+import importlib.abc
+try:
+    import pkg_resources
+    _EXPOSED_LIBS = os.path.realpath(%(context.exposed_libs)r)
+    _ALLOWED = set()
+    try:
+        with open(_EXPOSED_LIBS, 'r') as fp:
+            for line in fp:
+                allow = line.split('#',1)[0].strip()
+                if allow:
+                    _ALLOWED.add(allow)
+    except IOError:
+        pass
+
+    class BuildPathEntryFinder:
+        def __init__(self, path):
+            if os.path.realpath(path) != _EXPOSED_LIBS:
+                raise ImportError()
+
+        def invalidate_caches(cls):
+            pass
+
+        def find_module(self, fullname):
+            return None
+
+        def find_loader(self, fullname):
+            return None, []
+
+        def find_spec(self, fullname, target=None):
+            return None
+
+    def find_on_build_path(importer, path_item, only=False):
+        for path in sys.build_path:
+            for dist in pkg_resources.find_on_path(importer, path, only):
+                if dist.project_name in _ALLOWED:
+                    yield dist
+
+    sys.path_hooks.append(BuildPathEntryFinder)
+    sys.path.append(_EXPOSED_LIBS)
+    pkg_resources.register_finder(BuildPathEntryFinder, find_on_build_path)
+    pkg_resources.working_set.add_entry(_EXPOSED_LIBS)
+except ImportError:
+    pass

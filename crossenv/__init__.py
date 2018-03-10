@@ -266,6 +266,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
         context = super().ensure_directories(env_dir)
         context.lib_path = os.path.join(env_dir, 'lib')
+        context.exposed_libs = os.path.join(context.lib_path, 'exposed.txt')
         utils.mkdir_if_needed(context.lib_path)
         return context
 
@@ -431,7 +432,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
         utils.install_script('site.py', context.lib_path, locals())
         shutil.copy(self.host_sysconfigdata_file, context.lib_path)
        
-        # host-python is ready.
+        # cross-python is ready.
         if self.with_cross_pip:
             logger.info("Installing cross-pip")
             subprocess.check_call([context.cross_env_exe, '-m', 'ensurepip',
@@ -441,6 +442,8 @@ class CrossEnvBuilder(venv.EnvBuilder):
         """
         Extra processing. Put scripts/binaries in the right place.
         """
+
+        utils.install_script('cross-expose', context.bin_path, locals())
 
         # Add cross-python alias to the path. This is just for
         # convenience and clarity.

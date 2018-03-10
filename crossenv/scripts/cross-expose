@@ -1,0 +1,107 @@
+#!%(context.build_env_exe)s
+
+import sys
+import os
+import importlib
+import argparse
+import logging
+import pkg_resources
+
+logger = logging.getLogger()
+EXPOSED_LIBS = %(context.exposed_libs)r
+
+def get_exposed():
+    exposed = set()
+    try:
+        with open(EXPOSED_LIBS, 'r') as fp:
+            for line in fp:
+                item = line.split('#',1)[0].strip()
+                if not item:
+                    continue
+                exposed.add(item)
+    except IOError:
+        pass
+    return exposed
+
+
+def list_exposed():
+    exposed = get_exposed()
+    for name in sorted(exposed):
+        print(name)
+
+def expose_packages(names, unexpose=False):
+    exposed = get_exposed()
+    names = set(names)
+
+    if not unexpose:
+        for name in names:
+            try:
+                pkg_resources.require(name)
+            except pkg_resources.DistributionNotFound:
+                logger.warning("%%r was not found in build-python. Skipping.",
+                        name)
+            else:
+                exposed.add(name)
+
+    else:
+        for name in names:
+            if name not in exposed:
+                logger.warning("%%r was not exposed. Skipping.",
+                        name)
+            else:
+                exposed.remove(name)
+
+    with open(EXPOSED_LIBS, 'w') as fp:
+        for item in sorted(exposed):
+            print(item, file=fp)
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="""Let cross-pip, setup.py, etc. see packages installed in
+                       build-python. This is mainly useful for getting around
+                       setup_requires.""")
+    parser.add_argument('-l', '--list', action='store_true',
+            help="""List currently exposed packages""")
+    parser.add_argument('-u', '--unexpose', action='store_true',
+            help="""Undo the effects of an eariler %%(prog)s call""")
+    parser.add_argument('-v', '--verbose', action='count', default=0,
+            help="""Verbose mode. May be specified multiple times to increase
+                    verbosity.""")
+    parser.add_argument('MODULE', nargs='*',
+            help="""Module(s) to expose (or unexpose) to cross-python.""")
+
+    args = parser.parse_args()
+
+    if args.verbose == 1:
+        level = logging.INFO
+    elif args.verbose > 1:
+        level = logging.DEBUG
+    else:
+        level = logging.WARNING
+    logging.basicConfig(level=level, format='%%(levelname)s: %%(message)s')
+
+    if args.list:
+        list_exposed()
+        sys.exit(0)
+
+    if not args.MODULE:
+        raise ValueError("At least one MODULE name is required")
+
+    if args.unexpose:
+        action = 'unexpose'
+    else:
+        action = 'expose'
+
+    exit_code = 0
+
+    try:
+        expose_packages(args.MODULE, args.unexpose)
+    except Exception as e:
+        exit_code = 1
+        logger.error("Cannot %%s %%s: %%s", action, mod, e)
+        logger.error("Traceback:", exc_info=True)
+
+    sys.exit(exit_code)
+
+if __name__ == '__main__':
+    main()
