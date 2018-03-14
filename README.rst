@@ -125,6 +125,14 @@ You can use ``setup.py`` to build wheels::
     (cross) $ python setup.py bdist_wheel
     ...
 
+When you need packages like Cython installed to build another module, sometimes
+satisfying dependencies can get tricky. If you simply ``pip install`` the
+module, you may find it builds Cython as a prerequisite *for the host* and then
+tries to run it on the build machine. This will fail, of course. To selectivly
+expose build-python packages so that setuptools will count them as installed,
+you can use the ``cross-expose`` script installed in the virtual environment.
+(Note that you can always import build-python packages from cross-python,
+even when setuptools doesn't realize they are installed.)
 
 Known Limitations
 -----------------------------------------------------------------------------
