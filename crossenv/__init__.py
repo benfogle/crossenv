@@ -10,6 +10,7 @@ import logging
 import importlib
 import types
 from configparser import ConfigParser
+import random
 
 from .utils import F
 from . import utils
@@ -373,56 +374,44 @@ class CrossEnvBuilder(venv.EnvBuilder):
         # directory.
         stdlib = os.path.abspath(os.path.dirname(os.__file__))
 
-        with open(context.cross_env_exe, 'w') as fp:
-            fp.write(dedent(F('''\
-                #!/bin/sh
-                _base=${0##*/}
-                export PYTHON_CROSSENV=1
-                export _PYTHON_PROJECT_BASE="%(self.host_project_base)s"
-                export _PYTHON_HOST_PLATFORM="%(self.host_platform)s"
-                export _PYTHON_SYSCONFIGDATA_NAME="%(sysconfig_name)s"
-                export PYTHONHOME="%(self.host_home)s"
-                export PYTHONPATH="%(context.lib_path)s:%(stdlib)s${PYTHONPATH:+:$PYTHONPATH}"
-                ''', locals())))
+        context.sentinel = random.randint(0,0xffffffff)
 
-            # Add sysroot to various environment variables. This doesn't help
-            # compiling, but some packages try to do manual checks for existence
-            # of headers and libraries. This will help them find things.
-            if self.host_sysroot:
-                libs = os.path.join(self.host_sysroot, 'usr', 'lib*')
-                libs = glob.glob(libs)
-                if not libs:
-                    logger.warning("No libs in sysroot. Does it exist?")
-                else:
-                    libs = os.pathsep.join(libs)
-                    fp.write(F('export LIBRARY_PATH=%(libs)s\n', locals()))
+        extra_envs = []
 
-                inc = os.path.join(self.host_sysroot, 'usr', 'include')
-                if not os.path.isdir(inc):
-                    logger.warning("No include/ in sysroot. Does it exist?")
-                else:
-                    fp.write(F('export CPATH=%(inc)s\n', locals()))
+        # Add sysroot to various environment variables. This doesn't help
+        # compiling, but some packages try to do manual checks for existence
+        # of headers and libraries. This will help them find things.
+        if self.host_sysroot:
+            libs = os.path.join(self.host_sysroot, 'usr', 'lib*')
+            libs = glob.glob(libs)
+            if not libs:
+                logger.warning("No libs in sysroot. Does it exist?")
+            else:
+                libs = os.pathsep.join(libs)
+                extra_envs.append(
+                    F('os.environ["LD_LIBRARY_PATH"] = %(libs)r', locals()))
 
-            for name, assign, val in self.extra_env_vars:
-                if assign == '=':
-                    fp.write(F('export %(name)s=%(val)s\n', locals()))
-                elif assign == '?=':
-                    fp.write(F('[ -z "${%(name)s}" ] && export %(name)s=%(val)s\n',
-                        locals()))
-                else:
-                    assert False, "Bad assignment value %r" % assign
+            inc = os.path.join(self.host_sysroot, 'usr', 'include')
+            if not os.path.isdir(inc):
+                logger.warning("No include/ in sysroot. Does it exist?")
+            else:
+                extra_envs.append(
+                    F('os.environ["CPATH"] = %(inc)r', locals()))
 
-            # We want to alter argv[0] so that sys.executable will be correct.
-            # We can't do this in a POSIX-compliant way, so we'll break
-            # into Python
-            fp.write(dedent(F('''\
-                exec %(context.build_env_exe)s -c '
-                import sys
-                import os
-                os.execv("%(context.build_env_exe)s", sys.argv[1:])
-                ' "%(context.cross_bin_path)s/$_base" "$@"
-                ''', locals())))
-        os.chmod(context.cross_env_exe, 0o755)
+        for name, assign, val in self.extra_env_vars:
+            if assign == '=':
+                extra_envs.append(
+                    F('os.environ[%(name)r] = %(val)r', locals()))
+            elif assign == '?=':
+                extra_envs.append(
+                    F('os.environ[%(name)r] = os.environ.get(%(name)r, %(val)r', locals()))
+            else:
+                assert False, "Bad assignment value %r" % assign
+
+        extra_envs = '\n'.join(extra_envs)
+        utils.install_script('pywrapper.py', context.cross_env_exe, locals(),
+                abs_name=True)
+
         for exe in ('python', 'python3'):
             exe = os.path.join(context.cross_bin_path, exe)
             if not os.path.exists(exe):

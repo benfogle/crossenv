@@ -1,7 +1,44 @@
 # Import only what we absolutely need before the path fixup
-import importlib.machinery
+
+# First a guard: If we left these environment variables in place we might
+# have messed with another Python installation. It's broken beyond repair
+# by this point in the startup process, but we can at least offer a helpful
+# warning...and who knows, it might still work, mostly.
+# There's also a chance that this is python2 we've messed with, so don't
+# import os, which can cause a SyntaxError.
 import sys
+import posix
+_sentinel = posix.environ.get(b'PYTHON_CROSSENV')
+if _sentinel != b"%(context.sentinel)d":
+    print("*******************************************************")
+    print("* Crossenv has leaked into another Python interpreter!")
+    print("* You should probably file a bug report.")
+    print("* Version %%s" %% sys.version)
+    print("* Executable %%s" %% sys.executable)
+    print("*******************************************************")
+
 import os
+import importlib.machinery
+
+os.environ['PYTHON_CROSSENV'] = 'x'
+
+# To prevent the above scenario from playing out every time run a script that
+# starts with #!/usr/bin/python, we need to remove the environment variables so
+# subprocesses won't see them.  Unfortunately, we still need them after
+# startup. Our solution is to force the C environment and os.environ to
+# diverge. This can still break in some situations where subprocess.Popen is
+# called with env=..., but the solution to that is to monkey patch subprocess.
+# We'll try not to do that unless we really have to.
+for name in ['_PYTHON_PROJECT_BASE', '_PYTHON_HOST_PLATFORM',
+             '_PYTHON_SYSCONFIGDATA_NAME', 'PYTHONHOME', 'PYTHONPATH']:
+    # This is the same as os.putenv/os.unsetenv, but I want to be clear that
+    # I'm trying to break something.
+    try:
+        os.environ.putenv(name, os.environ['_OLD_' + name])
+        del os.environ['_OLD_' + name]
+    except KeyError:
+        os.environ.unsetenv(name)
+
 
 # sysconfig isn't _quite_ set up right, because it queries from a not-yet fixed
 # sys module. The variables that come from build_time_vars are correct, so
