@@ -55,6 +55,12 @@ def expose_packages(names, unexpose=False):
         for item in sorted(exposed):
             print(item, file=fp)
 
+def get_all_modules():
+    from pip.operations.freeze import freeze
+    DEV_PKGS = ('pip', 'setuptools', 'distribute', 'wheel')
+    installed = freeze(local_only=True, skip=DEV_PKGS)
+    return [ req.split('==')[0] for req in installed ]
+
 def main():
     parser = argparse.ArgumentParser(
         description="""Let cross-pip, setup.py, etc. see packages installed in
@@ -68,7 +74,9 @@ def main():
             help="""Verbose mode. May be specified multiple times to increase
                     verbosity.""")
     parser.add_argument('MODULE', nargs='*',
-            help="""Module(s) to expose (or unexpose) to cross-python.""")
+            help="""Module(s) to expose (or unexpose) to cross-python. If the
+                    special name :all: is encountered, all modules, as reported
+                    by 'pip freeze' will be exposed.""")
 
     args = parser.parse_args()
 
@@ -86,6 +94,12 @@ def main():
 
     if not args.MODULE:
         raise ValueError("At least one MODULE name is required")
+
+    if ':all:' in args.MODULE:
+        args.MODULE = get_all_modules()
+        logger.info("All modules:")
+        for m in args.MODULE:
+            logger.info(m)
 
     if args.unexpose:
         action = 'unexpose'
