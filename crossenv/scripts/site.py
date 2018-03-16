@@ -165,11 +165,22 @@ del sys.modules['site']
 del sys.modules['sysconfig']
 import site
 import sysconfig
+import distutils.sysconfig
+sysconfig.get_config_vars() # Force init
+distutils.sysconfig.get_config_vars() # Force init
+
+# Now that sysconfig is set up, remove a few environment variables completely.
+# If someone (setuptools!) calls subprocess.Popen with env=os.environ.copy(),
+# it will break subprocesses because 'python3 -I', as in the wrapper script,
+# doesn't prevent these from being used.
+for name in ('_PYTHON_PROJECT_BASE', '_PYTHON_HOST_PLATFORM',
+        '_PYTHON_SYSCONFIGDATA_NAME'):
+    if name in os.environ:
+        del os.environ[name]
 
 # Now modify sys.path in a way that we can selectivly let setuptools know
 # about packages in build-python. This won't change how things are imported:
 # just whether or not setuptools thinks they are installed.
-import importlib.abc
 try:
     import pkg_resources
     _EXPOSED_LIBS = os.path.realpath(%(context.exposed_libs)r)
