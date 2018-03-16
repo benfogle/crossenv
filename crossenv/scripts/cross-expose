@@ -93,13 +93,7 @@ def main():
         sys.exit(0)
 
     if not args.MODULE:
-        raise ValueError("At least one MODULE name is required")
-
-    if ':all:' in args.MODULE:
-        args.MODULE = get_all_modules()
-        logger.info("All modules:")
-        for m in args.MODULE:
-            logger.info(m)
+        parser.error("At least one MODULE name is required")
 
     if args.unexpose:
         action = 'unexpose'
@@ -109,6 +103,12 @@ def main():
     exit_code = 0
 
     try:
+        if ':all:' in args.MODULE:
+            args.MODULE = get_all_modules()
+            logger.info("All modules:")
+            for m in args.MODULE:
+                logger.info(m)
+
         expose_packages(args.MODULE, args.unexpose)
     except Exception as e:
         exit_code = 1
