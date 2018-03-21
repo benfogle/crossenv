@@ -62,7 +62,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
                             of 'default', 'cross', 'build', or 'both'.
                             'default' means to clear cross only when
                             cross_prefix is None.
-    
+
     :param cross_prefix:    Explicitly set the location of the cross-python
                             virtual environment.
 
@@ -368,7 +368,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
         # make a script that sets the environment variables and calls Python.
         # Don't do this in bin/activate, because it's a pain to set/unset
         # properly (and for csh, fish as well).
-        
+
         # Note that env_exe hasn't actually been created yet.
 
         sysconfig_name = os.path.basename(self.host_sysconfigdata_file)
@@ -384,7 +384,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
         context.sentinel = random.randint(0,0xffffffff)
 
-        extra_envs = []
+        extra_envs = list(self.extra_env_vars)
 
         # Add sysroot to various environment variables. This doesn't help
         # compiling, but some packages try to do manual checks for existence
@@ -396,27 +396,14 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 logger.warning("No libs in sysroot. Does it exist?")
             else:
                 libs = os.pathsep.join(libs)
-                extra_envs.append(
-                    F('os.environ["LIBRARY_PATH"] = %(libs)r', locals()))
+                extra_envs.append(('LIBRARY_PATH', ':=', libs))
 
             inc = os.path.join(self.host_sysroot, 'usr', 'include')
             if not os.path.isdir(inc):
                 logger.warning("No include/ in sysroot. Does it exist?")
             else:
-                extra_envs.append(
-                    F('os.environ["CPATH"] = %(inc)r', locals()))
+                extra_envs.append(('CPATH', ':=', inc))
 
-        for name, assign, val in self.extra_env_vars:
-            if assign == '=':
-                extra_envs.append(
-                    F('os.environ[%(name)r] = %(val)r', locals()))
-            elif assign == '?=':
-                extra_envs.append(
-                    F('os.environ[%(name)r] = os.environ.get(%(name)r, %(val)r', locals()))
-            else:
-                assert False, "Bad assignment value %r" % assign
-
-        extra_envs = '\n'.join(extra_envs)
         utils.install_script('pywrapper.py.tmpl', context.cross_env_exe, locals())
 
         for exe in ('python', 'python3'):
@@ -429,7 +416,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 os.path.join(context.lib_path, 'site.py'),
                 locals())
         shutil.copy(self.host_sysconfigdata_file, context.lib_path)
-       
+
         # cross-python is ready.
         if self.with_cross_pip:
             logger.info("Installing cross-pip")
@@ -493,9 +480,10 @@ def parse_env_vars(env_vars):
             name, value = spec.split('=',1)
         except IndexError:
             raise ValueError("Invalid variable %r. Must be in the form "
-                              "NAME=VALUE or NAME?=VALUE" % spec)
-        if name.endswith('?'):
-            assign = '?='
+                              "NAME=VALUE" % spec)
+
+        if name[-1:] in '?+:':
+            assign = name[-1] + '='
             name = name[:-1]
 
         if not name.isidentifier():
@@ -546,11 +534,18 @@ def main():
         help="""Skips installing or upgrading pip in the cross virtual
                 environment.""")
     parser.add_argument('--env', action='append', default=[],
-        help="""An environment variable in the form FOO=BAR that will be
-                added to the environment just before executing the python
-                build executable. May be given multiple times. The form
-                FOO?=BAR is also allowed to assign FOO only if not already
-                set.""")
+        help="""An environment variable that will be added to the environment
+                just before executing the python build executable. May be given
+                multiple times. May be one of the following forms:
+
+                'FOO=BAR' to unconditionally set the value.
+
+                'FOO+=BAR' to append a value.
+
+                'FOO?=BAR' to set a value only if not already set
+
+                'FOO:=BAR' to append to a PATH-like variable, with colons
+                between each element.""")
     parser.add_argument('--sysroot', action='store',
         help="""Explicitly set the sysroot for the cross-complier toolchain.
                 If not given, an attempt will be made to guess. This is used

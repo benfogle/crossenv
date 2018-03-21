@@ -25,7 +25,19 @@ else:
 
 os.environ['PYTHONPATH'] = path
 
-%(extra_envs)s
+extra_envs = %(extra_envs)r
+for name, assign, value in extra_envs:
+    if assign == '=':
+        os.environ[name] = value
+    elif assign == '?=' and name not in os.environ:
+        os.environ[name] = value
+    elif assign == '+=':
+        os.environ[name] = os.environ.get(name,'') + value
+    elif assign == ':=':
+        if name in os.environ:
+            os.environ[name] = os.environ[name] + ':' + value
+        else:
+            os.environ[name] = value
 
 # This will fix up argv0 so that sys.executable will be correct
 os.execv(%(context.build_env_exe)r, sys.argv)
