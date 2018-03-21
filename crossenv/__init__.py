@@ -397,7 +397,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
             else:
                 libs = os.pathsep.join(libs)
                 extra_envs.append(
-                    F('os.environ["LD_LIBRARY_PATH"] = %(libs)r', locals()))
+                    F('os.environ["LIBRARY_PATH"] = %(libs)r', locals()))
 
             inc = os.path.join(self.host_sysroot, 'usr', 'include')
             if not os.path.isdir(inc):
