@@ -409,8 +409,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 assert False, "Bad assignment value %r" % assign
 
         extra_envs = '\n'.join(extra_envs)
-        utils.install_script('pywrapper.py', context.cross_env_exe, locals(),
-                abs_name=True)
+        utils.install_script('pywrapper.py.tmpl', context.cross_env_exe, locals())
 
         for exe in ('python', 'python3'):
             exe = os.path.join(context.cross_bin_path, exe)
@@ -418,7 +417,9 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 utils.symlink(context.python_exe, exe)
 
         # Install patches to environment
-        utils.install_script('site.py', context.lib_path, locals())
+        utils.install_script('site.py.tmpl',
+                os.path.join(context.lib_path, 'site.py'),
+                locals())
         shutil.copy(self.host_sysconfigdata_file, context.lib_path)
        
         # cross-python is ready.
@@ -432,7 +433,9 @@ class CrossEnvBuilder(venv.EnvBuilder):
         Extra processing. Put scripts/binaries in the right place.
         """
 
-        utils.install_script('cross-expose', context.bin_path, locals())
+        utils.install_script('cross-expose.py.tmpl',
+                os.path.join(context.bin_path, 'cross-expose'),
+                locals())
 
         # Add cross-python alias to the path. This is just for
         # convenience and clarity.
