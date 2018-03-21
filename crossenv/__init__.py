@@ -71,6 +71,11 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
     :param with_build_pip:  If True, ensure pip is installed in the
                             build-python virtual environment.
+
+    :param host_sysroot:    If given, the cross-compiler toolchain's sysroot.
+                            If not given, an attempt will be made to guess.
+                            These will be added (redundantly) to the default
+                            search paths to help trick some packages.
     """
     def __init__(self, *,
             host_python,
@@ -79,7 +84,9 @@ class CrossEnvBuilder(venv.EnvBuilder):
             clear=False,
             cross_prefix=None,
             with_cross_pip=False,
-            with_build_pip=False):
+            with_build_pip=False,
+            host_sysroot=None):
+        self.host_sysroot = host_sysroot
         self.find_host_python(host_python)
         self.find_compiler_info()
         self.build_system_site_packages = build_system_site_packages
@@ -217,8 +224,6 @@ class CrossEnvBuilder(venv.EnvBuilder):
             except subprocess.CalledProcessError:
                 return None
 
-        self.host_sysroot = None
-
         if run_compiler('--version') is None:
             # I guess we could continue...but why?
             raise RuntimeError(
@@ -226,9 +231,10 @@ class CrossEnvBuilder(venv.EnvBuilder):
             return
 
         # TODO: Clang doesn't have this option
-        self.host_sysroot = run_compiler('-print-sysroot')
-        if self.host_sysroot:
-            self.host_sysroot = self.host_sysroot.strip()
+        if self.host_sysroot is None:
+            self.host_sysroot = run_compiler('-print-sysroot')
+            if self.host_sysroot:
+                self.host_sysroot = self.host_sysroot.strip()
 
     def create(self, env_dir):
         """
@@ -545,6 +551,11 @@ def main():
                 build executable. May be given multiple times. The form
                 FOO?=BAR is also allowed to assign FOO only if not already
                 set.""")
+    parser.add_argument('--sysroot', action='store',
+        help="""Explicitly set the sysroot for the cross-complier toolchain.
+                If not given, an attempt will be made to guess. This is used
+                to trick some packages into finding required headers and is
+                optional.""")
     parser.add_argument('-v', '--verbose', action='count', default=0,
         help="""Verbose mode. May be specified multiple times to increase
                 verbosity.""")
@@ -577,6 +588,7 @@ def main():
                 extra_env_vars=env,
                 with_cross_pip=not args.without_cross_pip,
                 with_build_pip=not args.without_build_pip,
+                host_sysroot=args.sysroot,
                 )
         for env_dir in args.ENV_DIR:
             builder.create(env_dir)
