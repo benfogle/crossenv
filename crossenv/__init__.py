@@ -226,7 +226,9 @@ class CrossEnvBuilder(venv.EnvBuilder):
             return
 
         # TODO: Clang doesn't have this option
-        self.host_sysroot = run_compiler('-print-sysroot').strip()
+        self.host_sysroot = run_compiler('-print-sysroot')
+        if self.host_sysroot:
+            self.host_sysroot = self.host_sysroot.strip()
 
     def create(self, env_dir):
         """
