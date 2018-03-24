@@ -92,6 +92,8 @@ class CrossEnvBuilder(venv.EnvBuilder):
         self.build_system_site_packages = build_system_site_packages
         self.extra_env_vars = extra_env_vars
         self.clear_build = clear in ('default', 'build', 'both')
+        if with_cross_pip and not with_build_pip:
+            raise ValueError("Cannot have cross-pip without build-pip")
         self.with_cross_pip = with_cross_pip
         self.with_build_pip = with_build_pip
         if cross_prefix:
@@ -417,11 +419,14 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 locals())
         shutil.copy(self.host_sysconfigdata_file, context.lib_path)
 
-        # cross-python is ready.
+        # cross-python is ready. We will use build-pip to install cross-pip
+        # because 'python -m ensurepip' is likely to get confused and think
+        # that there's nothing to do.
         if self.with_cross_pip:
             logger.info("Installing cross-pip")
-            subprocess.check_call([context.cross_env_exe, '-m', 'ensurepip',
-                '--default-pip', '--upgrade'])
+            subprocess.check_output([context.cross_env_exe, '-m', 'pip',
+                'install', '--ignore-installed',
+                '--prefix='+context.cross_env_dir, 'pip', 'setuptools'])
 
     def post_setup(self, context):
         """
@@ -527,12 +532,10 @@ def main():
     parser.add_argument('--without-pip', action='store_true',
         help="""Skips installing or upgrading pip in both the build and cross
                 virtual environments. (Pip is bootstrapped by default.)""")
-    parser.add_argument('--without-build-pip', action='store_true',
-        help="""Skips installing or upgrading pip the build virtual
-                environments.""")
     parser.add_argument('--without-cross-pip', action='store_true',
         help="""Skips installing or upgrading pip in the cross virtual
-                environment.""")
+                environment. Note that you cannot have cross-pip without
+                build-pip.""")
     parser.add_argument('--env', action='append', default=[],
         help="""An environment variable that will be added to the environment
                 just before executing the python build executable. May be given
@@ -574,7 +577,6 @@ def main():
     try:
         if args.without_pip:
             args.without_cross_pip = True
-            args.without_build_pip = True
         env = parse_env_vars(args.env)
 
         builder = CrossEnvBuilder(host_python=args.HOST_PYTHON,
@@ -582,7 +584,7 @@ def main():
                 clear=args.clear,
                 extra_env_vars=env,
                 with_cross_pip=not args.without_cross_pip,
-                with_build_pip=not args.without_build_pip,
+                with_build_pip=not args.without_pip,
                 host_sysroot=args.sysroot,
                 )
         for env_dir in args.ENV_DIR:
