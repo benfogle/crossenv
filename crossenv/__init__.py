@@ -592,3 +592,4 @@ def main():
     except Exception as e:
         logger.error('%s', e)
         logger.debug('Traceback:', exc_info=True)
+        sys.exit(1)
