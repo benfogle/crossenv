@@ -34,10 +34,12 @@ def overwrite_file(name, mode='w', perms=None):
     fp = tempfile.NamedTemporaryFile(mode, delete=False)
     try:
         yield fp
+        fp.close()
         if perms is not None:
             os.chmod(fp.name, perms)
         shutil.move(fp.name, name)
     except Exception as e:
+        fp.close()
         try:
             os.unlink(fp.name)
         except OSError:
