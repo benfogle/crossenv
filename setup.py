@@ -10,7 +10,7 @@ except IOError:
 
 setup(
     name="crossenv",
-    version="0.2",
+    version="0.3",
     description="A cross-compiling tool for Python extension modules",
     long_description=long_description,
     url="https://github.com/benfogle/crossenv",
