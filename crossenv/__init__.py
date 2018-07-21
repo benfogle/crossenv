@@ -424,9 +424,26 @@ class CrossEnvBuilder(venv.EnvBuilder):
         # that there's nothing to do.
         if self.with_cross_pip:
             logger.info("Installing cross-pip")
+
+            # Make sure we install the same version of pip and setuptools to
+            # prevent errors (#1).
+            reqs = subprocess.check_output([context.build_env_exe, '-m', 'pip',
+                '--disable-pip-version-check',
+                'freeze',
+                '--all'],
+                universal_newlines=True)
+            all_reqs = reqs.split()
+            reqs = []
+            for req in all_reqs:
+                if req.split('==')[0] in {'setuptools', 'pip'}:
+                    reqs.append(req)
+
+            logger.debug("REQS: %s", reqs)
             subprocess.check_output([context.cross_env_exe, '-m', 'pip',
-                'install', '--ignore-installed',
-                '--prefix='+context.cross_env_dir, 'pip', 'setuptools'])
+                '--disable-pip-version-check',
+                'install',
+                '--ignore-installed',
+                '--prefix='+context.cross_env_dir] + reqs)
 
     def post_setup(self, context):
         """
