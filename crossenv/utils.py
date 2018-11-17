@@ -2,6 +2,7 @@ import contextlib
 import tempfile
 import shutil
 import os
+from textwrap import dedent
 
 import pkg_resources
 
@@ -62,6 +63,13 @@ def symlink(src, dst):
     if os.path.exists(dst):
         os.unlink(dst)
     os.symlink(src, dst)
+
+def make_launcher(src, dst):
+    with overwrite_file(dst, perms=0o755) as fp:
+        fp.write(dedent(F('''\
+            #!/bin/sh
+            exec %(src)s "$@"
+            ''', locals())))
 
 def install_script(name, dst, values, perms=0o755):
     srcname = os.path.join('scripts', name)

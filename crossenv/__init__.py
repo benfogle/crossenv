@@ -491,6 +491,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 '--ignore-installed',
                 '--prefix='+context.cross_env_dir] + context.build_pip_reqs)
 
+
     def post_setup(self, context):
         """
         Extra processing. Put scripts/binaries in the right place.
@@ -500,6 +501,9 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 os.path.join(context.bin_path, 'cross-expose'),
                 locals())
 
+        # Don't trust these to be symlinks. A symlink to Python will mess up
+        # the virtualenv.
+
         # Add cross-python alias to the path. This is just for
         # convenience and clarity.
         for exe in os.listdir(context.cross_bin_path):
@@ -507,21 +511,15 @@ class CrossEnvBuilder(venv.EnvBuilder):
             if not os.path.isfile(target) or not os.access(target, os.X_OK):
                 continue
             dest = os.path.join(context.bin_path, 'cross-' + exe)
-            utils.symlink(target, dest)
+            utils.make_launcher(target, dest)
 
         # Add build-python and build-pip to the path.
-        # Don't trust these to be symlinks. A symlink to Python will mess up
-        # the virtualenv.
         for exe in os.listdir(context.build_bin_path):
             target = os.path.join(context.build_bin_path, exe)
             if not os.path.isfile(target) or not os.access(target, os.X_OK):
                 continue
             dest = os.path.join(context.bin_path, 'build-' + exe)
-            with utils.overwrite_file(dest, perms=0o755) as fp:
-                fp.write(dedent(F('''\
-                    #/bin/sh
-                    exec %(target)s "$@"
-                    ''', locals())))
+            utils.make_launcher(target, dest)
 
         logger.info("Finishing up...")
         activate = os.path.join(context.bin_path, 'activate')
