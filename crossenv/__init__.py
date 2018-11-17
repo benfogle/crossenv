@@ -346,6 +346,48 @@ class CrossEnvBuilder(venv.EnvBuilder):
             if line:
                 context.build_sys_path.append(line)
 
+        if self.with_build_pip:
+            # Make sure we install the same version of pip and setuptools to
+            # prevent errors (#1).
+            reqs = subprocess.check_output([context.build_env_exe, '-m', 'pip',
+                '--disable-pip-version-check',
+                'freeze',
+                '--all'],
+                universal_newlines=True)
+            all_reqs = reqs.split()
+            context.build_pip_reqs = []
+            for req in all_reqs:
+                package = req.split('==')[0]
+                if package == 'pip':
+                    context.build_pip_version = req
+                    context.build_pip_reqs.append(req)
+                elif package == 'setuptools':
+                    context.build_pip_reqs.append(req)
+
+            # Many distributions use a patched, 'unbundled' version of pip,
+            # where the vendored packages aren't stored within pip itself, but
+            # elsewhere on the system. This breaks cross-pip, which won't be
+            # able to find them after the modifications we made. Fix this by
+            # downloading a stock version of pip (Issue #6).
+            if self._build_pip_is_unbundled(context):
+                logger.info("Redownloading stock pip")
+                subprocess.check_output([context.build_env_exe, '-m', 'pip',
+                    '--disable-pip-version-check',
+                    'install',
+                    '--ignore-installed',
+                    context.build_pip_version])
+
+    def _build_pip_is_unbundled(self, context):
+        pyver = 'python' + sysconfig.get_config_var('py_version_short')
+        bundled_module = os.path.join(context.build_env_dir,
+                              'lib',
+                              pyver,
+                              'site-packages',
+                              'pip',
+                              '_vendor',
+                              'six.py')
+        return not os.path.exists(bundled_module)
+
     def make_cross_python(self, context):
         """
         Assemble the cross-python virtual environment
@@ -442,24 +484,12 @@ class CrossEnvBuilder(venv.EnvBuilder):
             logger.info("Installing cross-pip")
 
             # Make sure we install the same version of pip and setuptools to
-            # prevent errors (#1).
-            reqs = subprocess.check_output([context.build_env_exe, '-m', 'pip',
-                '--disable-pip-version-check',
-                'freeze',
-                '--all'],
-                universal_newlines=True)
-            all_reqs = reqs.split()
-            reqs = []
-            for req in all_reqs:
-                if req.split('==')[0] in {'setuptools', 'pip'}:
-                    reqs.append(req)
-
-            logger.debug("REQS: %s", reqs)
+            logger.debug("Installing: %s", context.build_pip_reqs)
             subprocess.check_output([context.cross_env_exe, '-m', 'pip',
                 '--disable-pip-version-check',
                 'install',
                 '--ignore-installed',
-                '--prefix='+context.cross_env_dir] + reqs)
+                '--prefix='+context.cross_env_dir] + context.build_pip_reqs)
 
     def post_setup(self, context):
         """
