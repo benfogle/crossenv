@@ -12,6 +12,7 @@ import types
 from configparser import ConfigParser
 import random
 import shlex
+import platform
 
 from .utils import F
 from . import utils
@@ -207,7 +208,9 @@ class CrossEnvBuilder(venv.EnvBuilder):
             for line in fp:
                 line = line.strip()
                 if line.startswith('_PYTHON_HOST_PLATFORM='):
-                    self.host_platform = line.split('=',1)[-1]
+                    host_platform = line.split('=',1)[-1]
+                    if host_platform:
+                        self.host_platform = line.split('=',1)[-1]
                     break
 
         # Sanity checks
@@ -291,7 +294,18 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
         # Do our best to guess defaults
         config = ConfigParser()
-        sysname, machine = self.host_platform.split('-')
+        # host_platform is _probably_ something like linux-x86_64, but it can
+        # vary.
+        host_info = self.host_platform.split('-')
+        if not host_info:
+            sysname = sys.platform
+        elif len(host_info) == 1:
+            sysname = sys.platform[0]
+            machine = platform.machine()
+        else:
+            sysname = sys.platform[0]
+            machine = sys.platform[-1]
+
         config['uname'] = {
             'sysname' : sysname.title(),
             'nodename' : 'build',
