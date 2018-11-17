@@ -11,6 +11,7 @@ import importlib
 import types
 from configparser import ConfigParser
 import random
+import shlex
 
 from .utils import F
 from . import utils
@@ -193,7 +194,8 @@ class CrossEnvBuilder(venv.EnvBuilder):
         spec.loader.exec_module(syscfg)
         self.host_sysconfigdata = syscfg
 
-        self.host_cc = syscfg.build_time_vars['CC']
+        # CC is often a compound command, like 'gcc --sysroot=...' (Issue #5)
+        self.host_cc = shlex.split(syscfg.build_time_vars['CC'])
         self.host_version = syscfg.build_time_vars['VERSION']
 
         # Ask the makefile a few questions too
@@ -220,7 +222,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
         """
 
         def run_compiler(arg):
-            cmdline = [self.host_cc, arg]
+            cmdline = self.host_cc + [arg]
             try:
                 return subprocess.check_output(cmdline, universal_newlines=True)
             except subprocess.CalledProcessError:
