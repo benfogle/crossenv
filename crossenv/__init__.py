@@ -112,6 +112,24 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 upgrade=False,
                 with_pip=False)
 
+
+    def find_installed_host_home(self):
+        # Assume host_project_base == {prefix}/bin and that this Python
+        # mirrors the host Python's install paths.
+        # On caveat: on native host Python (for testing) this might be a
+        # virtualenv.
+        home = os.path.dirname(self.host_project_base)
+        pyvenv = os.path.join(home, 'pyvenv.cfg')
+        if os.path.exists(pyvenv):
+            with open(pyvenv) as fp:
+                for line in fp:
+                    key, _, val = line.partition('=')
+                    key = key.strip()
+                    val = val.strip()
+                    if key == 'home':
+                        return os.path.dirname(val)
+        return home
+
     def find_host_python(self, host):
         """
         Find Python paths and other info based on a path.
@@ -145,9 +163,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
                              build_dir,
                              '_sysconfigdata*.py'))
         else:
-            # Assume host_project_base == {prefix}/bin and that this Python
-            # mirrors the host Python's install paths.
-            self.host_home = os.path.dirname(self.host_project_base)
+            self.host_home = self.find_installed_host_home()
             python_ver = 'python' + sysconfig.get_config_var('py_version_short')
             libdir = os.path.join(self.host_home, 'lib', python_ver)
             sysconfigdata = glob.glob(os.path.join(libdir, '_sysconfigdata*.py'))
