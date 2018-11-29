@@ -195,8 +195,17 @@ class CrossEnvBuilder(venv.EnvBuilder):
         spec.loader.exec_module(syscfg)
         self.host_sysconfigdata = syscfg
 
-        # CC is often a compound command, like 'gcc --sysroot=...' (Issue #5)
-        self.host_cc = shlex.split(syscfg.build_time_vars['CC'])
+        # CC could be compound command, like 'gcc --sysroot=...' (Issue #5)
+        # but that can cause issues (#7) so let the user know.
+        host_cc = syscfg.build_time_vars['CC']
+        self.host_cc = shlex.split(host_cc)
+        if len(self.host_cc) > 1:
+            logger.warning("CC is a compound command (%s)", host_cc)
+            logger.warning("This can cause issues for modules that don't "
+                           "expect it.")
+            logger.warning("Consider setting CC='%s' and CFLAGS='%s'",
+                    self.host_cc[0], ' '.join(self.host_cc[1:]))
+
         self.host_version = syscfg.build_time_vars['VERSION']
 
         # Ask the makefile a few questions too
