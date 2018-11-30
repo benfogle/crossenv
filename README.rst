@@ -125,14 +125,28 @@ You can use ``setup.py`` to build wheels::
     (cross) $ python setup.py bdist_wheel
     ...
 
-When you need packages like Cython installed to build another module, sometimes
-satisfying dependencies can get tricky. If you simply ``pip install`` the
-module, you may find it builds Cython as a prerequisite *for the host* and then
-tries to run it on the build machine. This will fail, of course. To selectively
-expose build-python packages so that setuptools will count them as installed,
-you can use the ``cross-expose`` script installed in the virtual environment.
-(Note that you can always import build-python packages from cross-python,
-even when setuptools doesn't realize they are installed.)
+When you need packages like Cython or cffi installed to build another module,
+sometimes satisfying dependencies can get tricky. If you simply ``pip install``
+the module, you may find it builds Cython as a prerequisite *for the host* and
+then tries to run it on the build machine. This will fail, of course, but if we
+install the necessary package for ``build-python``, then ``pip`` will pick up
+the correct version during install.
+
+For example, to build bcrypt and python-cryptography::
+
+    (cross) $ build-pip install cffi
+    (cross) $ pip install bcrypt
+    (cross) $ pip install cryptography
+
+Some packages do explicit checks for existence of a package. For instance, a
+package may do a check for Cython (other than simply trying to import it)
+before proceeding with installation. If a package is installed with
+``build-pip``, etc., then setuptools in ``cross-python`` does not recognize it
+as installed. (Note that you can still import it even if setuptools can't see
+it, so the naive check of ``import Cython`` will work fine so long as you did
+``build-pip install Cython`` earlier.) This is by design. To selectively expose
+build-python packages so that setuptools will count them as installed, you can
+use the ``cross-expose`` script installed in the virtual environment.
 
 Known Limitations
 -----------------------------------------------------------------------------
