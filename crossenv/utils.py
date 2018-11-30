@@ -3,8 +3,7 @@ import tempfile
 import shutil
 import os
 from textwrap import dedent
-
-import pkg_resources
+import pkgutil
 
 # We're using %-style formatting everywhere because it's more convenient for
 # building Python and Bourne Shell source code. We'll build some helpers to
@@ -73,7 +72,7 @@ def make_launcher(src, dst):
 
 def install_script(name, dst, values, perms=0o755):
     srcname = os.path.join('scripts', name)
-    src = pkg_resources.resource_string(__package__, srcname)
+    src = pkgutil.get_data(__package__, srcname)
     src = F(src.decode(), values)
     mkdir_if_needed(os.path.dirname(dst))
 
