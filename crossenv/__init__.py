@@ -17,6 +17,8 @@ import platform
 from .utils import F
 from . import utils
 
+__version__ = '0.5'
+
 logger = logging.getLogger(__name__)
 
 class CrossEnvBuilder(venv.EnvBuilder):
@@ -652,6 +654,8 @@ def main():
     parser.add_argument('-v', '--verbose', action='count', default=0,
         help="""Verbose mode. May be specified multiple times to increase
                 verbosity.""")
+    parser.add_argument('--version', action='version',
+        version='crossenv %s' % __version__)
     parser.add_argument('HOST_PYTHON',
         help="""The host Python to use. This should be the path to the Python
                 executable, which may be in the source directory or an installed
