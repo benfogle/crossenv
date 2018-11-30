@@ -130,6 +130,43 @@ class CrossEnvBuilder(venv.EnvBuilder):
                         return os.path.dirname(val)
         return home
 
+    def find_sysconfig_data(self, paths):
+        maybe = []
+        for path in paths:
+            pattern = os.path.join(path, '_sysconfigdata*.py*')
+            maybe.extend(glob.glob(pattern))
+
+        sysconfig_paths = set()
+        for filename in maybe:
+            if (os.path.isfile(filename) and
+                    os.path.splitext(filename)[1] in ('.py', '.pyc')):
+                sysconfig_paths.add(filename)
+
+        # Multiples can happen, but so long as they all have the same
+        # info we should be okay. Seen in buildroot
+        self.host_sysconfigdata = None
+        for path in sysconfig_paths:
+            basename = os.path.basename(path)
+            name, _ = os.path.splitext(basename)
+            spec = importlib.util.spec_from_file_location(name, path)
+            syscfg = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(syscfg)
+            if self.host_sysconfigdata is None:
+                self.host_sysconfigdata = syscfg
+                self.host_sysconfigdata_file = path
+                self.host_sysconfigdata_name = name
+            elif (self.host_sysconfigdata.build_time_vars !=
+                    syscfg.build_time_vars):
+                logger.error("Conflicting build info in %s and %s",
+                        self.host_sysconfigdata_file, path)
+                raise ValueError("Malformed Python installation!")
+
+        if not self.host_sysconfigdata:
+            logger.error("Cannot find _sysconfigdata*.py. Looked in %s",
+                    ', '.join(paths))
+            raise FileNotFoundError("No _sysconfigdata*.py found in host lib")
+
+
     def find_host_python(self, host):
         """
         Find Python paths and other info based on a path.
@@ -158,35 +195,19 @@ class CrossEnvBuilder(venv.EnvBuilder):
                     "Cannot read %s: Build the host Python first " % s) from None
 
             self.host_home = self.host_project_base
-            sysconfigdata = glob.glob(
-                os.path.join(self.host_project_base,
-                             build_dir,
-                             '_sysconfigdata*.py'))
+            sysconfig_paths = [os.path.join(self.host_project_base, build_dir)]
         else:
             self.host_home = self.find_installed_host_home()
             python_ver = 'python' + sysconfig.get_config_var('py_version_short')
             libdir = os.path.join(self.host_home, 'lib', python_ver)
-            sysconfigdata = glob.glob(os.path.join(libdir, '_sysconfigdata*.py'))
-            if not sysconfigdata:
-                # Ubuntu puts it in a subdir plat-...
-                sysconfigdata = glob.glob(
-                        os.path.join(libdir, '*', '_sysconfigdata*.py'))
-
-                if not sysconfigdata:
-                    # Try to make sense of the error. Probably a version error.
-                    anylib = os.path.join(self.host_home, 'lib', 'python*')
-                    glob1 = os.path.join(anylib, '_sysconfigdata*.py')
-                    glob2 = os.path.join(anylib, '*', '_sysconfigdata*.py')
-                    found = glob.glob(glob1)
-                    found.extend(glob.glob(glob2))
-
-                    if found:
-                        found = os.path.basename(os.path.dirname(found[0]))
-                        host_version = found[6:]
-                        raise ValueError(
-                                "Version mismatch: host=%s, build=%s" % (
-                                    host_version, build_version))
-                    # Let it error out later with the default message
+            sysconfig_paths = [
+                libdir,
+                # Ubuntu puts it in libdir/plat-<arch>
+                os.path.join(libdir, '*'), 
+                # Below might be a version mismatch, but try to use it
+                #os.path.join(self.host_home, 'lib', 'python*'),
+                #os.path.join(self.host_home, 'lib', 'python*', '*'),
+            ]
 
             makefile = glob.glob(os.path.join(libdir, '*', 'Makefile'))
             if not makefile:
@@ -194,26 +215,14 @@ class CrossEnvBuilder(venv.EnvBuilder):
             else:
                 self.host_makefile = makefile[0]
 
-        if not sysconfigdata:
-            raise FileNotFoundError("No _sysconfigdata*.py found in host lib")
-        elif len(sysconfigdata) > 1:
-            raise ValueError("Malformed Python installation.")
 
         # We need paths to sysconfig data, and we need to import it to ask
         # a few questions.
-        self.host_sysconfigdata_file = sysconfigdata[0]
-        name = os.path.basename(sysconfigdata[0])
-        self.host_sysconfigdata_name, _ = os.path.splitext(name)
-        spec = importlib.util.spec_from_file_location(
-                self.host_sysconfigdata_name,
-                self.host_sysconfigdata_file)
-        syscfg = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(syscfg)
-        self.host_sysconfigdata = syscfg
+        self.find_sysconfig_data(sysconfig_paths)
 
         # CC could be compound command, like 'gcc --sysroot=...' (Issue #5)
         # but that can cause issues (#7) so let the user know.
-        host_cc = syscfg.build_time_vars['CC']
+        host_cc = self.host_sysconfigdata.build_time_vars['CC']
         self.host_cc = shlex.split(host_cc)
         if len(self.host_cc) > 1:
             logger.warning("CC is a compound command (%s)", host_cc)
@@ -222,7 +231,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
             logger.warning("Consider setting CC='%s' and CFLAGS='%s'",
                     self.host_cc[0], ' '.join(self.host_cc[1:]))
 
-        self.host_version = syscfg.build_time_vars['VERSION']
+        self.host_version = self.host_sysconfigdata.build_time_vars['VERSION']
 
         # Ask the makefile a few questions too
         if not os.path.exists(self.host_makefile):
