@@ -146,6 +146,13 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
         # Multiples can happen, but so long as they all have the same
         # info we should be okay. Seen in buildroot
+        # When choosing the correct one, prefer, in order:
+        #   1) The .py file
+        #   2) The .pyc file
+        #   3) Any .opt-*.pyc files
+        # so sort by the length of the longest extension
+        sysconfig_paths = sorted(sysconfig_paths,
+                                 key=lambda x: len(x.split('.',1)[1]))
         self.host_sysconfigdata = None
         for path in sysconfig_paths:
             basename = os.path.basename(path)
