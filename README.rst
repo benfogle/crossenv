@@ -1,4 +1,4 @@
-Virtual Envrionments for Cross-Compiling Python Extension Modules
+Virtual Environments for Cross-Compiling Python Extension Modules
 =============================================================================
 
 Porting a Python app to an embedded device can be complicated. Once you have
