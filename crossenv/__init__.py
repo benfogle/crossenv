@@ -95,6 +95,8 @@ class CrossEnvBuilder(venv.EnvBuilder):
     :param host_relativize: If True, convert absolute paths in CC, CXX, and
                             related variables to use the base name. Tools must
                             be in $PATH for this to work.
+    :param host_config_vars:    Extra config_vars (build_time_vars) to override,
+                                such as CC, CCSHARED, etc.
     """
     def __init__(self, *,
             host_python,
@@ -108,7 +110,8 @@ class CrossEnvBuilder(venv.EnvBuilder):
             host_cc=None,
             host_cxx=None,
             host_ar=None,
-            host_relativize=False):
+            host_relativize=False,
+            host_config_vars=()):
         self.host_sysroot = host_sysroot
         self.find_host_python(host_python)
         self.find_compiler_info()
@@ -129,6 +132,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
         self.repl_host_cxx = host_cxx
         self.repl_host_ar = host_ar
         self.host_relativize = host_relativize
+        self.host_config_vars = host_config_vars
 
         super().__init__(
                 system_site_packages=False,
@@ -610,8 +614,6 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
         build_time_vars = {}
         for key, value in cross_sysconfig_data['build_time_vars'].items():
-            if key == 'CC':
-                import pdb; pdb.set_trace()
             if isinstance(value, str):
                 if repl_ar:
                     value = find_ar.sub(repl_ar, value)
@@ -621,6 +623,11 @@ class CrossEnvBuilder(venv.EnvBuilder):
                     value = find_cc.sub(repl_cc, value)
 
             build_time_vars[key] = value
+
+        # Overrides from --config_var options
+        for key, value in self.host_config_vars.items():
+            build_time_vars[key] = value
+
         cross_sysconfig_data['build_time_vars'] = build_time_vars
 
         with open(cross_sysconfig, 'w') as fp:
@@ -696,6 +703,25 @@ def parse_env_vars(env_vars):
     return parsed
 
 
+def parse_config_vars(config_vars):
+    """Convert string descriptions of config variable assignment into
+    something that CrossEnvBuilder understands.
+
+    :param config_vars:  An iterable of strings in the form 'FOO=BAR'
+    :returns:            A dictionary of name:value pairs.
+    """
+
+    result = {}
+    for val in config_vars:
+        try:
+            name, value = val.split('=', 1)
+        except ValueError:
+            raise ValueError("--config-var must be of the form FOO=BAR")
+
+        result[name] = value
+    return result
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="""
@@ -748,6 +774,10 @@ def main():
     parser.add_argument('--ar', action='store',
         help="""Override ar (static archive) from what host-python was built
                 with.""")
+    parser.add_argument('--config-var', action='append', default=[],
+        help="""Override a specific config-time variable for host-python, such
+                as CC, CCSHARED, etc. Usage: --config-var=FOO=BAR. All values
+                are strings.""")
     parser.add_argument('--env', action='append', default=[],
         help="""An environment variable that will be added to the environment
                 just before executing the python build executable. May be given
@@ -792,6 +822,7 @@ def main():
         if args.without_pip:
             args.without_cross_pip = True
         env = parse_env_vars(args.env)
+        config_vars = parse_config_vars(args.config_var)
 
         builder = CrossEnvBuilder(host_python=args.HOST_PYTHON,
                 build_system_site_packages=args.system_site_packages,
@@ -804,6 +835,7 @@ def main():
                 host_cxx=args.cxx,
                 host_ar=args.ar,
                 host_relativize=args.relative_toolchain,
+                host_config_vars = config_vars,
                 )
         for env_dir in args.ENV_DIR:
             builder.create(env_dir)
