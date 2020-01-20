@@ -13,6 +13,8 @@ from configparser import ConfigParser
 import random
 import shlex
 import platform
+import pprint
+import re
 
 from .utils import F
 from . import utils
@@ -80,6 +82,19 @@ class CrossEnvBuilder(venv.EnvBuilder):
                             If not given, an attempt will be made to guess.
                             These will be added (redundantly) to the default
                             search paths to help trick some packages.
+
+    :param host_cc:         If given, override CC and related variables with
+                            this value.
+
+    :param host_cxx:        If given, override CXX and related variables with
+                            this value.
+
+    :param host_ar:         If given, override AR and related variables with
+                            this value.
+
+    :param host_relativize: If True, convert absolute paths in CC, CXX, and
+                            related variables to use the base name. Tools must
+                            be in $PATH for this to work.
     """
     def __init__(self, *,
             host_python,
@@ -89,7 +104,11 @@ class CrossEnvBuilder(venv.EnvBuilder):
             cross_prefix=None,
             with_cross_pip=False,
             with_build_pip=False,
-            host_sysroot=None):
+            host_sysroot=None,
+            host_cc=None,
+            host_cxx=None,
+            host_ar=None,
+            host_relativize=False):
         self.host_sysroot = host_sysroot
         self.find_host_python(host_python)
         self.find_compiler_info()
@@ -106,6 +125,10 @@ class CrossEnvBuilder(venv.EnvBuilder):
         else:
             self.cross_prefix = None
             self.clear_cross = clear in ('default', 'cross', 'both')
+        self.repl_host_cc = host_cc
+        self.repl_host_cxx = host_cxx
+        self.repl_host_ar = host_ar
+        self.host_relativize = host_relativize
 
         super().__init__(
                 system_site_packages=False,
@@ -239,6 +262,18 @@ class CrossEnvBuilder(venv.EnvBuilder):
                            "expect it.")
             logger.warning("Consider setting CC='%s' and CFLAGS='%s'",
                     self.host_cc[0], ' '.join(self.host_cc[1:]))
+
+        host_cxx = self.host_sysconfigdata.build_time_vars['CXX']
+        self.host_cxx = shlex.split(host_cxx)
+        if len(self.host_cxx) > 1:
+            logger.warning("CXX is a compound command (%s)", host_cxx)
+            logger.warning("This can cause issues for modules that don't "
+                           "expect it.")
+            logger.warning("Consider setting CXX='%s' and CXXFLAGS='%s'",
+                    self.host_cxx[0], ' '.join(self.host_cxx[1:]))
+
+        host_ar = self.host_sysconfigdata.build_time_vars['AR']
+        self.host_ar = shlex.split(host_ar)
 
         self.host_version = self.host_sysconfigdata.build_time_vars['VERSION']
 
@@ -518,7 +553,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
         utils.install_script('site.py.tmpl',
                 os.path.join(context.lib_path, 'site.py'),
                 locals())
-        shutil.copy(self.host_sysconfigdata_file, context.lib_path)
+        self.copy_and_patch_sysconfigdata(context)
 
         # cross-python is ready. We will use build-pip to install cross-pip
         # because 'python -m ensurepip' is likely to get confused and think
@@ -534,6 +569,65 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 '--ignore-installed',
                 '--prefix='+context.cross_env_dir] + context.build_pip_reqs)
 
+
+    def copy_and_patch_sysconfigdata(self, context):
+        """
+        Put sysconfigdata file in the crossenv/lib directory. We will
+        transform CC, CXX, and related variables as requested.
+        """
+
+        sysconfig_name = os.path.basename(self.host_sysconfigdata_file)
+        cross_sysconfig = os.path.join(context.lib_path, sysconfig_name)
+
+        # Patch all instances of CC, etc. We'll do a global search and
+        # replace
+        host_cc = self.host_cc[0]
+        host_cxx = self.host_cxx[0]
+        host_ar = self.host_ar[0]
+        repl_cc = None
+        repl_cxx = None
+        repl_ar = None
+        find_cc = re.compile(r'(?:^|(?<=\s))%s(?=\s|$)' % re.escape(host_cc))
+        find_cxx = re.compile(r'(?:^|(?<=\s))%s(?=\s|$)' % re.escape(host_cxx))
+        find_ar = re.compile(r'(?:^|(?<=\s))%s(?=\s|$)' % re.escape(host_ar))
+
+        if self.host_relativize:
+            repl_cc = os.path.basename(host_cc)
+            repl_cxx = os.path.basename(host_cxx)
+            repl_ar = os.path.basename(host_ar)
+        if self.repl_host_cc:
+            repl_cc = self.repl_host_cc
+        if self.repl_host_cxx:
+            repl_cxx = self.repl_host_cxx
+        if self.repl_host_ar:
+            repl_ar = self.repl_host_ar
+
+        cross_sysconfig_data = {}
+        for key, value in self.host_sysconfigdata.__dict__.items():
+            if key.startswith('__'):
+                continue # misc module stuff like __name__, __builtins__
+            cross_sysconfig_data[key] = value
+
+        build_time_vars = {}
+        for key, value in cross_sysconfig_data['build_time_vars'].items():
+            if key == 'CC':
+                import pdb; pdb.set_trace()
+            if isinstance(value, str):
+                if repl_ar:
+                    value = find_ar.sub(repl_ar, value)
+                if repl_cxx:
+                    value = find_cxx.sub(repl_cxx, value)
+                if repl_cc:
+                    value = find_cc.sub(repl_cc, value)
+
+            build_time_vars[key] = value
+        cross_sysconfig_data['build_time_vars'] = build_time_vars
+
+        with open(cross_sysconfig, 'w') as fp:
+            fp.write("# generated from %s\n" % self.host_sysconfigdata_file)
+            for key, value in cross_sysconfig_data.items():
+                fp.write("%s = " % key)
+                pprint.pprint(value, stream=fp, compact=True)
 
     def post_setup(self, context):
         """
@@ -640,6 +734,20 @@ def main():
         help="""Skips installing or upgrading pip in the cross virtual
                 environment. Note that you cannot have cross-pip without
                 build-pip.""")
+    parser.add_argument('--relative-toolchain', action='store_true',
+        help="""If the C/C++ compiler, etc. are stored with absolute paths,
+                make them relative. Useful for when host-python was build with
+                absolute paths in, e.g., a Docker image. The tools must be
+                in $PATH for this to work.""")
+    parser.add_argument('--cc', action='store',
+        help="""Override the C compiler from what host-python was built
+                with.""")
+    parser.add_argument('--cxx', action='store',
+        help="""Override the C++ compiler from what host-python was built
+                with.""")
+    parser.add_argument('--ar', action='store',
+        help="""Override ar (static archive) from what host-python was built
+                with.""")
     parser.add_argument('--env', action='append', default=[],
         help="""An environment variable that will be added to the environment
                 just before executing the python build executable. May be given
@@ -692,6 +800,10 @@ def main():
                 with_cross_pip=not args.without_cross_pip,
                 with_build_pip=not args.without_pip,
                 host_sysroot=args.sysroot,
+                host_cc=args.cc,
+                host_cxx=args.cxx,
+                host_ar=args.ar,
+                host_relativize=args.relative_toolchain,
                 )
         for env_dir in args.ENV_DIR:
             builder.create(env_dir)
