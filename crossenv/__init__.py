@@ -581,6 +581,9 @@ class CrossEnvBuilder(venv.EnvBuilder):
         """
 
         sysconfig_name = os.path.basename(self.host_sysconfigdata_file)
+        # we always write a .py, but we might be reading from a .pyc
+        # (i.e., from buildroot).
+        sysconfig_name = os.path.splitext(sysconfig_name)[0] + '.py'
         cross_sysconfig = os.path.join(context.lib_path, sysconfig_name)
 
         # Patch all instances of CC, etc. We'll do a global search and
