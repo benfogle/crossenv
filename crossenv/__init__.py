@@ -385,8 +385,8 @@ class CrossEnvBuilder(venv.EnvBuilder):
             sysname = sys.platform[0]
             machine = platform.machine()
         else:
-            sysname = sys.platform[0]
-            machine = sys.platform[-1]
+            sysname = host_info[0]
+            machine = host_info[-1]
 
         config['uname'] = {
             'sysname' : sysname.title(),
