@@ -828,6 +828,7 @@ def main():
         config_vars = parse_config_vars(args.config_var)
 
         builder = CrossEnvBuilder(host_python=args.HOST_PYTHON,
+                cross_prefix=args.cross_prefix,
                 build_system_site_packages=args.system_site_packages,
                 clear=args.clear,
                 extra_env_vars=env,
