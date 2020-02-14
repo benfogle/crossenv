@@ -212,7 +212,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
             sysconfig_paths = [
                 libdir,
                 # Ubuntu puts it in libdir/plat-<arch>
-                os.path.join(libdir, '*'), 
+                os.path.join(libdir, '*'),
                 # Below might be a version mismatch, but try to use it
                 #os.path.join(self.host_home, 'lib', 'python*'),
                 #os.path.join(self.host_home, 'lib', 'python*', '*'),
@@ -502,7 +502,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
             else:
                 libs = ''
                 inc = ''
-                
+
             libs = glob.glob(libs)
             if not libs:
                 logger.warning("No libs in sysroot. Does it exist?")
@@ -510,7 +510,6 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 libs = os.pathsep.join(libs)
                 extra_envs.append(('LIBRARY_PATH', ':=', libs))
 
-            inc = glob.glob(inc)
             if not os.path.isdir(inc):
                 logger.warning("No include/ in sysroot. Does it exist?")
             else:
