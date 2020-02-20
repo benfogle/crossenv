@@ -239,7 +239,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
             sysconfig_paths = [
                 libdir,
                 # Ubuntu puts it in libdir/plat-<arch>
-                os.path.join(libdir, '*'), 
+                os.path.join(libdir, '*'),
                 # Below might be a version mismatch, but try to use it
                 #os.path.join(self.host_home, 'lib', 'python*'),
                 #os.path.join(self.host_home, 'lib', 'python*', '*'),
@@ -532,7 +532,16 @@ class CrossEnvBuilder(venv.EnvBuilder):
         # compiling, but some packages try to do manual checks for existence
         # of headers and libraries. This will help them find things.
         if self.host_sysroot:
-            libs = os.path.join(self.host_sysroot, 'usr', 'lib*')
+            if os.path.isdir(os.path.join(self.host_sysroot, 'usr')):
+                libs = os.path.join(self.host_sysroot, 'usr', 'lib*')
+                inc = os.path.join(self.host_sysroot, 'usr', 'include')
+            elif os.path.isdir(os.path.join(self.host_sysroot, 'lib')):
+                libs = os.path.join(self.host_sysroot, 'lib*')
+                inc = os.path.join(self.host_sysroot, 'include')
+            else:
+                libs = ''
+                inc = ''
+
             libs = glob.glob(libs)
             if not libs:
                 logger.warning("No libs in sysroot. Does it exist?")
@@ -540,7 +549,6 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 libs = os.pathsep.join(libs)
                 extra_envs.append(('LIBRARY_PATH', ':=', libs))
 
-            inc = os.path.join(self.host_sysroot, 'usr', 'include')
             if not os.path.isdir(inc):
                 logger.warning("No include/ in sysroot. Does it exist?")
             else:
