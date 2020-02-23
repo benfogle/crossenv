@@ -1,0 +1,1 @@
+COMMON_CONFIG += LDFLAGS="-Wl,-s"
