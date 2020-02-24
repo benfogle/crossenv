@@ -4,45 +4,45 @@ import shutil
 import hashlib
 import subprocess
 import string
+import copy
+from distutils.dir_util import copy_tree
 
 import pytest
+
+from .testutils import ExecEnvironment, hash_file
 
 PREBUILT_RESOURCES = {
     'build-python:3.8.1': {
         'source': 'prebuilt_musl_arm_aarch64.tar.xz',
         'binary': 'prebuilt_musl_arm_aarch64/python/3.8.1/build/bin/python3',
         'env': {
-            'PATH': '{SOURCE}/prebuilt_musl_arm_aarch64/musl-toolchain/bin:$PATH',
+            'PATH': '$SOURCE/prebuilt_musl_arm_aarch64/musl-toolchain/bin:$PATH',
         },
     },
     'host-python:3.8.1:aarch64-linux-musl': {
         'source': 'prebuilt_musl_arm_aarch64.tar.xz',
         'binary': 'prebuilt_musl_arm_aarch64/python/3.8.1/aarch64/bin/python3',
         'env': {
-            'QEMU_LD_PREFIX': '{SOURCE}/prebuilt_musl_arm_aarch64/musl-toolchain/aarch64-linux-musl',
+            'QEMU_LD_PREFIX': '$SOURCE/prebuilt_musl_arm_aarch64/musl-toolchain/aarch64-linux-musl',
         }
     },
     'host-python:3.8.1:arm-linux-musleabihf': {
         'source': 'prebuilt_musl_arm_aarch64.tar.xz',
         'binary': 'prebuilt_musl_arm_aarch64/python/3.8.1/armhf/bin/python3',
         'env': {
-            'QEMU_LD_PREFIX': '{SOURCE}/prebuilt_musl_arm_aarch64/musl-toolchain/arm-linux-musleabihf',
+            'QEMU_LD_PREFIX': '$SOURCE/prebuilt_musl_arm_aarch64/musl-toolchain/arm-linux-musleabihf',
         }
+    },
+    'hello-module:source': {
+        'source': 'hello',
     },
 }
 
-def hash_file(path):
-    ctx = hashlib.sha256()
-    with open(path, 'rb') as fp:
-        data = fp.read(0x4000)
-        while data:
-            ctx.update(data)
-            data = fp.read(0x4000)
-    return ctx.hexdigest()
-
 class PrebuiltBlobs:
     def __init__(self):
-        self.source_paths = []
+        this_dir = Path(__file__).parent
+
+        self.source_paths = [ this_dir/'prebuilt', this_dir/'sources' ]
         self.cache_dir = None
         self._existing_blobs = {}
 
@@ -62,7 +62,7 @@ class PrebuiltBlobs:
     def find_source(self, source):
         for path in self.source_paths:
             result = path / source
-            if result.exists:
+            if result.exists():
                 return result
         raise FileNotFoundError("No such file: {}".format(source))
 
@@ -87,62 +87,48 @@ class PrebuiltBlobs:
 
 prebuilt_blobs = PrebuiltBlobs()
 
-class Resource:
-    def __init__(self, source, binary=None, env=None):
-        self.source = source
-        self.path = prebuilt_blobs.get(source)
-        if binary is not None:
-            binary = (self.path / binary).resolve()
-        self.binary = binary
-        env = env or {}
-        self.env = {}
+class Resource(ExecEnvironment):
+    def __init__(self, tag):
+        super().__init__()
 
-        for name, value in env.items():
-            value = value.format(SOURCE=self.path.resolve())
-            self.env[name] = value
+        try:
+            info = PREBUILT_RESOURCES[tag]
+        except KeyError:
+            raise KeyError("No such resource {}".format(tag))
 
+        try:
+            self.source = info['source']
+        except KeyError:
+            raise KeyError(
+                "Resource {} missing 'source' field".format(tag))
 
-    def _popen(self, func, *args, **kwargs):
-        env = kwargs.get('env')
-        if env is None:
-            env = os.environ.copy()
-        else:
-            env = env.copy()
+        self.path = prebuilt_blobs.get(self.source)
+        self.binary = info.get('binary')
+        if self.binary:
+            self.binary = self.path / self.binary
 
-        # os.path.expandvars exists, but doesn't operate on an arbitrary
-        # environment. We might clobber changes to $PATH, etc. if we use
-        # it.
-        class EnvDict:
-            def __init__(self, src):
-                self.src = src
-            def __getitem__(self, key):
-                return self.src.get(key, '')
+        self.setenv('SOURCE', str(self.path))
+        for name, value in info.get('env', {}).items():
+            self.setenv(name, value)
 
-        new_env = {}
-        for name, value in self.env.items():
-            value = string.Template(value).substitute(EnvDict(env))
-            new_env[name] = value
+        self._get_temp = None
 
-        env.update(new_env)
-        kwargs['env'] = env
+    @classmethod
+    def exists(cls, tag):
+        return tag in PREBUILT_RESOURCES
 
-        return func(*args, **kwargs)
+    def make_copy(self, destdir = None, symlinks=True):
+        if destdir is None:
+            if self._get_temp is None:
+                raise ValueError("Must explcitly set destdir")
+            destdir = self._get_temp()
 
-
-    def run(self, *args, **kwargs):
-        return self._popen(subprocess.run, *args, **kwargs)
-
-
-    def popen(self, *args, **kwargs):
-        return self._popen(subprocess.Popen, *args, **kwargs)
-
-
-    def check_call(self, *args, **kwargs):
-        return self._popen(subprocess.check_call, *args, **kwargs)
-
-
-    def check_output(self, *args, **kwargs):
-        return self._popen(subprocess.check_output, *args, **kwargs)
+        new_env = copy.copy(self)
+        new_env.path = destdir
+        copy_tree(str(self.path),
+                  str(destdir),
+                  preserve_symlinks=symlinks)
+        return new_env
 
 ARCHITECTURES = [
     'aarch64-linux-musl',
@@ -164,22 +150,25 @@ def python_version(request):
 @pytest.fixture
 def build_python(python_version):
     build_python_tag = 'build-python:{}'.format(python_version)
-    build_python = Resource(**PREBUILT_RESOURCES[build_python_tag])
-
-    if build_python_tag not in PREBUILT_RESOURCES:
+    if not Resource.exists(build_python_tag):
         pytest.skip('No build-python version {} available'.format(
             python_version))
 
-    build_python = Resource(**PREBUILT_RESOURCES[build_python_tag])
-    return build_python
+    return Resource(build_python_tag)
 
 @pytest.fixture
 def host_python(architecture, python_version):
     host_python_tag = 'host-python:{}:{}'.format(python_version, architecture)
-
-    if host_python_tag not in PREBUILT_RESOURCES:
+    if not Resource.exists(host_python_tag):
         pytest.skip('No Python version {} available for {}'.format(
             python_version, architecture))
 
-    host_python = Resource(**PREBUILT_RESOURCES[host_python_tag])
-    return host_python
+    return Resource(host_python_tag)
+
+@pytest.fixture
+def get_resource(tmp_path_factory):
+    def _get_resource(tag):
+        r = Resource(tag)
+        r._get_temp = lambda: tmp_path_factory.mktemp('resource-copy')
+        return r
+    return _get_resource
