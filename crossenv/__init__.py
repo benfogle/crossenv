@@ -310,13 +310,14 @@ class CrossEnvBuilder(venv.EnvBuilder):
             cmdline = self.host_cc + [arg]
             try:
                 return subprocess.check_output(cmdline, universal_newlines=True)
-            except subprocess.CalledProcessError:
+            except (subprocess.CalledProcessError, FileNotFoundError):
                 return None
 
         if run_compiler('--version') is None:
             # I guess we could continue...but why?
             raise RuntimeError(
-                "Cannot run cross-compiler! Extension modules won't build!")
+                "Cannot run cross-compiler (%r)! Extension modules won't "
+                "build!" % ' '.join(self.host_cc))
             return
 
         # TODO: Clang doesn't have this option
