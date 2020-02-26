@@ -1,0 +1,28 @@
+pool:
+    vmImage: 'ubuntu-latest'
+
+steps:
+    - task: UsePythonVersion@0
+      inputs:
+          versionSpec: '>=3.5'
+    - script: |
+        set -x
+        sudo apt update
+        sudo apt install -y qemu-user git-lfs
+        python -m pip install --upgrade pip
+        pip install pytest wheel
+      displayName: Install dependencies
+
+    - script: |
+        git lfs pull
+      displayName: Pull prebuilt binaries
+
+    - script: |
+        pytest --junit-xml=test-results.xml
+      displayName: Run tests
+
+    - task: PublishTestResults@2
+      condition: succeededOrFailed()
+      inputs:
+          testResultsFiles: '**/test-*.xml'
+          testRunTitle: 'Publish test results'
