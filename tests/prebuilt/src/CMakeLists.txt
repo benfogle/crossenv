@@ -347,8 +347,7 @@ ExternalProject_Add(host-python-3.8.1-aarch64
                             ac_cv_buggy_getaddrinfo=no
                             ac_cv_file__dev_ptmx=yes
                             ac_cv_file__dev_ptc=no
-                            CFLAGS=--sysroot=${MUSL_TOOLCHAIN}/aarch64-linux-musl
-                            "LDFLAGS=--sysroot=${MUSL_TOOLCHAIN}/aarch64-linux-musl ${rpaths}"
+                            "LDFLAGS=${rpaths}"
     BUILD_COMMAND       ${CMAKE_COMMAND} -E env PATH=${BUILD_PYTHON_PATH}
                         make -j8
     INSTALL_COMMAND     ${CMAKE_COMMAND} -E env PATH=${BUILD_PYTHON_PATH}
@@ -381,8 +380,7 @@ ExternalProject_Add(host-python-3.8.1-armhf
                             ac_cv_buggy_getaddrinfo=no
                             ac_cv_file__dev_ptmx=yes
                             ac_cv_file__dev_ptc=no
-                            CFLAGS=--sysroot=${MUSL_TOOLCHAIN}/arm-linux-musleabihf
-                            "LDFLAGS=--sysroot=${MUSL_TOOLCHAIN}/arm-linux-musleabihf ${rpaths}"
+                            "LDFLAGS=${rpaths}"
     BUILD_COMMAND       ${CMAKE_COMMAND} -E env PATH=${BUILD_PYTHON_PATH}
                         make -j8
     INSTALL_COMMAND     ${CMAKE_COMMAND} -E env PATH=${BUILD_PYTHON_PATH}
