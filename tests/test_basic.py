@@ -68,3 +68,21 @@ def test_pip_install_numpy(tmp_path, host_python, build_python):
             ok = numpy.test(tests=['numpy.polynomial'])
             sys.exit(ok != True)
             ''')])
+
+def test_pip_install_bcrypt(tmp_path, host_python, build_python):
+    crossenv = make_crossenv(tmp_path, host_python, build_python)
+    crossenv.check_call(['build-pip', '--no-cache-dir', 'install', 'cffi'])
+    crossenv.check_call(['cross-pip', '--no-cache-dir', 'install', 'bcrypt'])
+
+    # From the bcrypt test suites
+    host_python.setenv('PYTHONPATH',
+            str(crossenv.cross_site_packages) + ':$PYTHONPATH')
+    output = host_python.check_output([host_python.binary, '-c', dedent('''
+            import bcrypt, sys
+            pw = b"Kk4DQuMMfZL9o"
+            salt = b"$2b$04$cVWp4XaNU8a4v1uMRum2SO"
+            print(bcrypt.hashpw(pw, salt).decode('ascii'))
+            ''')])
+    output = output.strip()
+    expected = b"$2b$04$cVWp4XaNU8a4v1uMRum2SO026BWLIoQMD/TXg5uZV.0P.uO8m3YEm"
+    assert output == expected
