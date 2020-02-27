@@ -3,6 +3,9 @@ Virtual Environments for Cross-Compiling Python Extension Modules
 
 |build status| |test status|
 
+Documentation is available online at https://crossenv.readthedocs.io and in the
+``docs`` directory.
+
 Porting a Python app to an embedded device can be complicated. Once you have
 Python built for your system, you may find yourself needing to include many
 third-party libraries. Pure-Python libraries usually just work, but many
