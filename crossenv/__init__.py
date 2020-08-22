@@ -383,7 +383,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
         if not host_info:
             sysname = sys.platform
         elif len(host_info) == 1:
-            sysname = sys.platform[0]
+            sysname = host_info[0]
             machine = platform.machine()
         else:
             sysname = host_info[0]
