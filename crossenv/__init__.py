@@ -97,6 +97,10 @@ class CrossEnvBuilder(venv.EnvBuilder):
                             be in $PATH for this to work.
     :param host_config_vars:    Extra config_vars (build_time_vars) to override,
                                 such as CC, CCSHARED, etc.
+    :param host_sysconfigdata_file:  Explicitly set the sysconfigdata file path.
+                                     If not given, all sysconfigdata files will
+                                     be searched and will error if there are
+                                     multiple files that have different values.
     """
     def __init__(self, *,
             host_python,
@@ -111,8 +115,10 @@ class CrossEnvBuilder(venv.EnvBuilder):
             host_cxx=None,
             host_ar=None,
             host_relativize=False,
-            host_config_vars=()):
+            host_config_vars=(),
+            host_sysconfigdata_file=None):
         self.host_sysroot = host_sysroot
+        self.host_sysconfigdata_file = host_sysconfigdata_file
         self.find_host_python(host_python)
         self.find_compiler_info()
         self.build_system_site_packages = build_system_site_packages
@@ -180,6 +186,8 @@ class CrossEnvBuilder(venv.EnvBuilder):
         # so sort by the length of the longest extension
         sysconfig_paths = sorted(sysconfig_paths,
                                  key=lambda x: len(x.split('.',1)[1]))
+        if self.host_sysconfigdata_file is not None:
+            sysconfig_paths = [self.host_sysconfigdata_file]
         self.host_sysconfigdata = None
         for path in sysconfig_paths:
             basename = os.path.basename(path)
@@ -808,6 +816,11 @@ def main():
                 If not given, an attempt will be made to guess. This is used
                 to trick some packages into finding required headers and is
                 optional.""")
+    parser.add_argument('--sysconfigdata-file', action='store',
+        help="""Explicitly set the sysconfigdata file path.
+                If not given, all sysconfigdata files will be searched and
+                will error if there are multiple files that have different
+                values.""")
     parser.add_argument('-v', '--verbose', action='count', default=0,
         help="""Verbose mode. May be specified multiple times to increase
                 verbosity.""")
@@ -849,6 +862,7 @@ def main():
                 host_ar=args.ar,
                 host_relativize=args.relative_toolchain,
                 host_config_vars = config_vars,
+                host_sysconfigdata_file=args.sysconfigdata_file,
                 )
         for env_dir in args.ENV_DIR:
             builder.create(env_dir)
