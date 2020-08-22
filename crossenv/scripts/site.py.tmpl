@@ -148,6 +148,8 @@ def uname2():
     return uname_result2
 platform.uname = uname2
 
+sys.platform = uname_result2.system.lower()
+
 if hasattr(platform, '_linux_distribution'):
     @wraps(platform._linux_distribution)
     def dist(*args, **kwargs):
