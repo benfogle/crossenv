@@ -332,8 +332,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
             cmdline = self.host_cc + [arg]
             try:
                 return subprocess.check_output(cmdline, universal_newlines=True)
-            except (subprocess.CalledProcessError, FileNotFoundError) as e:
-                sys.stderr.write('# ' + os.environ['PATH'] + '\n')
+            except (subprocess.CalledProcessError, FileNotFoundError):
                 return None
 
         if run_compiler('--version') is None:
