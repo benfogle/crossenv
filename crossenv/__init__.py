@@ -113,8 +113,17 @@ class CrossEnvBuilder(venv.EnvBuilder):
             host_relativize=False,
             host_config_vars=()):
         self.host_sysroot = host_sysroot
-        self.find_host_python(host_python)
-        self.find_compiler_info()
+        self.host_cc = None
+        self.host_cxx = None
+        self.host_ar = None
+        if host_cc:
+            self.host_cc = shlex.split(host_cc)
+        if host_cxx:
+            self.host_cxx = shlex.split(host_cxx)
+        if host_ar:
+            self.host_ar = shlex.split(host_ar)
+        self.host_relativize = host_relativize
+        self.host_config_vars = host_config_vars
         self.build_system_site_packages = build_system_site_packages
         self.extra_env_vars = extra_env_vars
         self.clear_build = clear in ('default', 'build', 'both')
@@ -128,11 +137,9 @@ class CrossEnvBuilder(venv.EnvBuilder):
         else:
             self.cross_prefix = None
             self.clear_cross = clear in ('default', 'cross', 'both')
-        self.repl_host_cc = host_cc
-        self.repl_host_cxx = host_cxx
-        self.repl_host_ar = host_ar
-        self.host_relativize = host_relativize
-        self.host_config_vars = host_config_vars
+
+        self.find_host_python(host_python)
+        self.find_compiler_info()
 
         super().__init__(
                 system_site_packages=False,
@@ -256,28 +263,43 @@ class CrossEnvBuilder(venv.EnvBuilder):
         # a few questions.
         self.find_sysconfig_data(sysconfig_paths)
 
+        # If the user wants to override host_cc, that takes precedence.
+        host_cc = self.host_sysconfigdata.build_time_vars['CC']
+        self.real_host_cc = shlex.split(host_cc)
+        if not self.host_cc:
+            self.host_cc = self.real_host_cc
+            if self.host_relativize:
+                self.host_cc[0] = os.path.basename(self.host_cc[0])
+
         # CC could be compound command, like 'gcc --sysroot=...' (Issue #5)
         # but that can cause issues (#7) so let the user know.
-        host_cc = self.host_sysconfigdata.build_time_vars['CC']
-        self.host_cc = shlex.split(host_cc)
         if len(self.host_cc) > 1:
-            logger.warning("CC is a compound command (%s)", host_cc)
+            logger.warning("CC is a compound command (%s)", self.host_cc)
             logger.warning("This can cause issues for modules that don't "
                            "expect it.")
             logger.warning("Consider setting CC='%s' and CFLAGS='%s'",
                     self.host_cc[0], ' '.join(self.host_cc[1:]))
 
         host_cxx = self.host_sysconfigdata.build_time_vars['CXX']
-        self.host_cxx = shlex.split(host_cxx)
+        self.real_host_cxx = shlex.split(host_cxx)
+        if not self.host_cxx:
+            self.host_cxx = self.real_host_cxx
+            if self.host_relativize:
+                self.host_cxx[0] = os.path.basename(self.host_cxx[0])
+
         if len(self.host_cxx) > 1:
-            logger.warning("CXX is a compound command (%s)", host_cxx)
+            logger.warning("CXX is a compound command (%s)", self.host_cxx)
             logger.warning("This can cause issues for modules that don't "
                            "expect it.")
             logger.warning("Consider setting CXX='%s' and CXXFLAGS='%s'",
                     self.host_cxx[0], ' '.join(self.host_cxx[1:]))
 
         host_ar = self.host_sysconfigdata.build_time_vars['AR']
-        self.host_ar = shlex.split(host_ar)
+        self.real_host_ar = shlex.split(host_ar)
+        if not self.host_ar:
+            self.host_ar = self.real_host_ar
+            if self.host_relativize:
+                self.host_ar[0] = os.path.basename(self.host_ar[0])
 
         self.host_version = self.host_sysconfigdata.build_time_vars['VERSION']
 
@@ -310,14 +332,15 @@ class CrossEnvBuilder(venv.EnvBuilder):
             cmdline = self.host_cc + [arg]
             try:
                 return subprocess.check_output(cmdline, universal_newlines=True)
-            except (subprocess.CalledProcessError, FileNotFoundError):
+            except (subprocess.CalledProcessError, FileNotFoundError) as e:
+                sys.stderr.write('# ' + os.environ['PATH'] + '\n')
                 return None
 
         if run_compiler('--version') is None:
             # I guess we could continue...but why?
             raise RuntimeError(
                 "Cannot run cross-compiler (%r)! Extension modules won't "
-                "build!" % ' '.join(self.host_cc))
+                "build! Use --cc to correct." % ' '.join(self.host_cc))
             return
 
         # TODO: Clang doesn't have this option
@@ -325,6 +348,41 @@ class CrossEnvBuilder(venv.EnvBuilder):
             self.host_sysroot = run_compiler('-print-sysroot')
             if self.host_sysroot:
                 self.host_sysroot = self.host_sysroot.strip()
+
+        # Sanity check that this is the right compiler. (See #24, #27.)
+        found_triple = run_compiler('-dumpmachine').strip().strip()
+        if found_triple:
+            expected = self.host_sysconfigdata.build_time_vars['HOST_GNU_TYPE']
+            if not self._compare_triples(found_triple, expected):
+                logger.warning("The cross-compiler (%r) does not appear to be "
+                               "for the correct architecture (got %s, expected "
+                               "%s). Use --cc to correct, if necessary.",
+                               ' '.join(self.host_cc),
+                               found_triple,
+                               expected)
+
+    def _compare_triples(self, x, y):
+        # They are in the form cpu-vendor-kernel-system or cpu-kernel-system.
+        # So we'll get something like: x86_64-linux-gnu or x86_64-pc-linux-gnu.
+        # We won't overcomplicate this, since it's just to generate a warning.
+        #
+        # We return True if we can't make sense of anything and wish to skip
+        # the warning.
+
+        parts_x = x.split('-')
+        if len(parts_x) == 4:
+            del parts_x[1]
+        elif len(parts_x) != 3:
+            return True # Some other form? Bail out.
+
+        parts_y = y.split('-')
+        if len(parts_y) == 4:
+            del parts_y[1]
+        elif len(parts_y) != 3:
+            return True # Some other form? Bail out.
+
+        return parts_x == parts_y
+
 
     def create(self, env_dir):
         """
@@ -597,26 +655,15 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
         # Patch all instances of CC, etc. We'll do a global search and
         # replace
-        host_cc = self.host_cc[0]
-        host_cxx = self.host_cxx[0]
-        host_ar = self.host_ar[0]
-        repl_cc = None
-        repl_cxx = None
-        repl_ar = None
+        host_cc = self.real_host_cc[0]
+        host_cxx = self.real_host_cxx[0]
+        host_ar = self.real_host_ar[0]
+        repl_cc = self.host_cc[0]
+        repl_cxx = self.host_cxx[0]
+        repl_ar = self.host_ar[0]
         find_cc = re.compile(r'(?:^|(?<=\s))%s(?=\s|$)' % re.escape(host_cc))
         find_cxx = re.compile(r'(?:^|(?<=\s))%s(?=\s|$)' % re.escape(host_cxx))
         find_ar = re.compile(r'(?:^|(?<=\s))%s(?=\s|$)' % re.escape(host_ar))
-
-        if self.host_relativize:
-            repl_cc = os.path.basename(host_cc)
-            repl_cxx = os.path.basename(host_cxx)
-            repl_ar = os.path.basename(host_ar)
-        if self.repl_host_cc:
-            repl_cc = self.repl_host_cc
-        if self.repl_host_cxx:
-            repl_cxx = self.repl_host_cxx
-        if self.repl_host_ar:
-            repl_ar = self.repl_host_ar
 
         cross_sysconfig_data = {}
         for key, value in self.host_sysconfigdata.__dict__.items():
@@ -627,12 +674,9 @@ class CrossEnvBuilder(venv.EnvBuilder):
         build_time_vars = {}
         for key, value in cross_sysconfig_data['build_time_vars'].items():
             if isinstance(value, str):
-                if repl_ar:
-                    value = find_ar.sub(repl_ar, value)
-                if repl_cxx:
-                    value = find_cxx.sub(repl_cxx, value)
-                if repl_cc:
-                    value = find_cc.sub(repl_cc, value)
+                value = find_ar.sub(repl_ar, value)
+                value = find_cxx.sub(repl_cxx, value)
+                value = find_cc.sub(repl_cc, value)
 
             build_time_vars[key] = value
 
