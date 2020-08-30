@@ -23,7 +23,7 @@ def test_wrong_architecture(tmp_path, host_python, build_python, get_resource):
     gcc."""
 
     crossenv = make_crossenv(tmp_path, host_python, build_python,
-            '--cc=gcc')
+            '--cc=/usr/bin/gcc')
     for line in crossenv.creation_log.splitlines():
         if re.match(r'WARNING:.*architecture', line):
             return

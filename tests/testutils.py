@@ -17,11 +17,7 @@ class ExecEnvironment:
     '''Mostly some wrappers around popen'''
 
     def __init__(self):
-        # Initialize the environment with a few things to keep from getting
-        # strange results
         self.environ = {}
-        for name in ('PATH', 'HOME', 'USER', 'TERM', 'SHELL'):
-            self.environ[name] = os.environ.get(name, '')
         self.cwd = None
 
     def expand_environ(self, value):
