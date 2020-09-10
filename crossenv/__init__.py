@@ -397,6 +397,10 @@ class CrossEnvBuilder(venv.EnvBuilder):
             'machine' : machine,
         }
 
+        if config['uname']['sysname'] != platform.system():
+            logger.warning("Build OS and host OS differ. "
+                           "This is not a supported use case.")
+
         context.crossenv_cfg = os.path.join(context.env_dir, 'crossenv.cfg')
         with utils.overwrite_file(context.crossenv_cfg) as fp:
             config.write(fp)
