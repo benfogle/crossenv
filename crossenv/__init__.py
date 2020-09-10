@@ -820,7 +820,8 @@ def main():
         help="""Explicitly set the sysconfigdata file path.
                 If not given, all sysconfigdata files will be searched and
                 will error if there are multiple files that have different
-                values.""")
+                values. This option is a workaround for specifically
+                conda python where multiple sysconfigdata files exist.""")
     parser.add_argument('-v', '--verbose', action='count', default=0,
         help="""Verbose mode. May be specified multiple times to increase
                 verbosity.""")
