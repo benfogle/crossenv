@@ -295,13 +295,22 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
         self.host_platform = sys.platform # Default: not actually cross compiling
         with open(self.host_makefile, 'r') as fp:
-            for line in fp:
-                line = line.strip()
-                if line.startswith('_PYTHON_HOST_PLATFORM='):
-                    host_platform = line.split('=',1)[-1]
-                    if host_platform:
-                        self.host_platform = line.split('=',1)[-1]
-                    break
+            lines = list(fp.readlines())
+
+        for line in lines:
+            line = line.strip()
+            if line.startswith('_PYTHON_HOST_PLATFORM='):
+                host_platform = line.split('=',1)[-1]
+                if host_platform:
+                    self.host_platform = line.split('=',1)[-1]
+                break
+
+        self.macosx_deployment_target = None
+        for line in lines:
+            line = line.strip()
+            if line.startswith('MACOSX_DEPLOYMENT_TARGET='):
+                self.macosx_deployment_target = line.split('=',1)[-1]
+                break
 
         # Sanity checks
         if self.host_version != build_version:
@@ -397,10 +406,18 @@ class CrossEnvBuilder(venv.EnvBuilder):
             sysname = host_info[0]
             machine = host_info[-1]
 
+        release = ''
+        if self.macosx_deployment_target:
+            major, minor = self.macosx_deployment_target.split(".")
+            if major == "10":
+                release = "%s.0.0" % (int(minor) + 4)
+            elif major == "11":
+                release = "%s.0.0" % (int(minor) + 20)
+
         config['uname'] = {
             'sysname' : sysname.title(),
             'nodename' : 'build',
-            'release' : '',
+            'release' : release,
             'version' : '',
             'machine' : machine,
         }
