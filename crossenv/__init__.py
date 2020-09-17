@@ -414,10 +414,10 @@ class CrossEnvBuilder(venv.EnvBuilder):
             except ValueError:
                 raise ValueError("Unexpected value %s for MACOSX_DEPLOYMENT_TARGET" %
                         self.macosx_deployment_target)
-            if major == "10":
-                release = "%s.0.0" % (int(minor) + 4)
-            elif major == "11":
-                release = "%s.0.0" % (int(minor) + 20)
+            if major == 10:
+                release = "%s.0.0" % (minor + 4)
+            elif major == 11:
+                release = "%s.0.0" % (minor + 20)
             else:
                 raise ValueError("Unexpected major version %s for MACOSX_DEPLOYMENT_TARGET" %
                         major)
