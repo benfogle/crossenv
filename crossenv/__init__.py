@@ -408,8 +408,8 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
         release = ''
         if self.macosx_deployment_target:
-            major, minor = self.macosx_deployment_target.split(".")
             try:
+                major, minor = self.macosx_deployment_target.split(".")
                 major, minor = int(major), int(minor)
             except ValueError:
                 raise ValueError("Unexpected value %s for MACOSX_DEPLOYMENT_TARGET" %
