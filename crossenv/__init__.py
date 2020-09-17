@@ -595,6 +595,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
             if not os.path.exists(exe):
                 utils.symlink(context.python_exe, exe)
 
+        macosx_deployment_target = self.macosx_deployment_target
         # Install patches to environment
         utils.install_script('site.py.tmpl',
                 os.path.join(context.lib_path, 'site.py'),

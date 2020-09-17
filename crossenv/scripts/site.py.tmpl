@@ -162,7 +162,7 @@ platform.libc_ver = libc_ver
 @wraps(platform.mac_ver)
 def mac_ver(release='', versioninfo=('', '', ''), machine=''):
     if release == '':
-        release = uname_result.release
+        release = %(macosx_deployment_target)r
     if machine == '':
         machine = uname_result.machine
     return release, versioninfo, machine
