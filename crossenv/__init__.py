@@ -409,10 +409,18 @@ class CrossEnvBuilder(venv.EnvBuilder):
         release = ''
         if self.macosx_deployment_target:
             major, minor = self.macosx_deployment_target.split(".")
+            try:
+                major, minor = int(major), int(minor)
+            except ValueError:
+                raise ValueError("Unexpected value %s for MACOSX_DEPLOYMENT_TARGET" %
+                        self.macosx_deployment_target)
             if major == "10":
                 release = "%s.0.0" % (int(minor) + 4)
             elif major == "11":
                 release = "%s.0.0" % (int(minor) + 20)
+            else:
+                raise ValueError("Unexpected major version %s for MACOSX_DEPLOYMENT_TARGET" %
+                        major)
 
         config['uname'] = {
             'sysname' : sysname.title(),
