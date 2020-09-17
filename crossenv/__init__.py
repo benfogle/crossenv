@@ -305,7 +305,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
                     self.host_platform = line.split('=',1)[-1]
                 break
 
-        self.macosx_deployment_target = None
+        self.macosx_deployment_target = ''
         for line in lines:
             line = line.strip()
             if line.startswith('MACOSX_DEPLOYMENT_TARGET='):
