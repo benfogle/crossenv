@@ -295,13 +295,22 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
         self.host_platform = sys.platform # Default: not actually cross compiling
         with open(self.host_makefile, 'r') as fp:
-            for line in fp:
-                line = line.strip()
-                if line.startswith('_PYTHON_HOST_PLATFORM='):
-                    host_platform = line.split('=',1)[-1]
-                    if host_platform:
-                        self.host_platform = line.split('=',1)[-1]
-                    break
+            lines = list(fp.readlines())
+
+        for line in lines:
+            line = line.strip()
+            if line.startswith('_PYTHON_HOST_PLATFORM='):
+                host_platform = line.split('=',1)[-1]
+                if host_platform:
+                    self.host_platform = line.split('=',1)[-1]
+                break
+
+        self.macosx_deployment_target = ''
+        for line in lines:
+            line = line.strip()
+            if line.startswith('MACOSX_DEPLOYMENT_TARGET='):
+                self.macosx_deployment_target = line.split('=',1)[-1]
+                break
 
         # Sanity checks
         if self.host_version != build_version:
@@ -397,10 +406,26 @@ class CrossEnvBuilder(venv.EnvBuilder):
             sysname = host_info[0]
             machine = host_info[-1]
 
+        release = ''
+        if self.macosx_deployment_target:
+            try:
+                major, minor = self.macosx_deployment_target.split(".")
+                major, minor = int(major), int(minor)
+            except ValueError:
+                raise ValueError("Unexpected value %s for MACOSX_DEPLOYMENT_TARGET" %
+                        self.macosx_deployment_target)
+            if major == 10:
+                release = "%s.0.0" % (minor + 4)
+            elif major == 11:
+                release = "%s.0.0" % (minor + 20)
+            else:
+                raise ValueError("Unexpected major version %s for MACOSX_DEPLOYMENT_TARGET" %
+                        major)
+
         config['uname'] = {
             'sysname' : sysname.title(),
             'nodename' : 'build',
-            'release' : '',
+            'release' : release,
             'version' : '',
             'machine' : machine,
         }
@@ -570,6 +595,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
             if not os.path.exists(exe):
                 utils.symlink(context.python_exe, exe)
 
+        macosx_deployment_target = self.macosx_deployment_target
         # Install patches to environment
         utils.install_script('site.py.tmpl',
                 os.path.join(context.lib_path, 'site.py'),
