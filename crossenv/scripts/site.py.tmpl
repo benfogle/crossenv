@@ -134,13 +134,17 @@ import platform
 processor = config.get('uname', 'processor', fallback=None)
 if processor is None:
     processor = config.get('uname', 'machine', fallback=None)
-uname_result2 = platform.uname_result(
+_uname_result_args = [
         config.get('uname', 'sysname', fallback=''),
         config.get('uname', 'nodename', fallback=''),
         config.get('uname', 'release', fallback=''),
         config.get('uname', 'version', fallback=''),
         config.get('uname', 'machine', fallback=''),
-        processor)
+]
+if sys.version_info[0:2] < (3, 9):
+    _uname_result_args.append(processor)
+uname_result2 = platform.uname_result(*_uname_result_args)
+
 @wraps(platform.uname)
 def uname2():
     return uname_result2
