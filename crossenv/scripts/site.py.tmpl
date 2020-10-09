@@ -159,6 +159,15 @@ def libc_ver(*args, **kwargs):
     return ('', '')
 platform.libc_ver = libc_ver
 
+@wraps(platform.mac_ver)
+def mac_ver(release='', versioninfo=('', '', ''), machine=''):
+    if release == '':
+        release = %(macosx_deployment_target)r
+    if machine == '':
+        machine = uname_result.machine
+    return release, versioninfo, machine
+platform.mac_ver = mac_ver
+
 # importlib.reload would probably work, but just to be safe we'll try to 
 # have the modules' __dict__ completely clean.
 del sys.modules['site']

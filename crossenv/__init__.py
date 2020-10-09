@@ -97,6 +97,10 @@ class CrossEnvBuilder(venv.EnvBuilder):
                             be in $PATH for this to work.
     :param host_config_vars:    Extra config_vars (build_time_vars) to override,
                                 such as CC, CCSHARED, etc.
+    :param host_sysconfigdata_file:  Explicitly set the sysconfigdata file path.
+                                     If not given, all sysconfigdata files will
+                                     be searched and will error if there are
+                                     multiple files that have different values.
     """
     def __init__(self, *,
             host_python,
@@ -111,7 +115,8 @@ class CrossEnvBuilder(venv.EnvBuilder):
             host_cxx=None,
             host_ar=None,
             host_relativize=False,
-            host_config_vars=()):
+            host_config_vars=(),
+            host_sysconfigdata_file=None):
         self.host_sysroot = host_sysroot
         self.host_cc = None
         self.host_cxx = None
@@ -124,6 +129,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
             self.host_ar = shlex.split(host_ar)
         self.host_relativize = host_relativize
         self.host_config_vars = host_config_vars
+        self.host_sysconfigdata_file = host_sysconfigdata_file
         self.build_system_site_packages = build_system_site_packages
         self.extra_env_vars = extra_env_vars
         self.clear_build = clear in ('default', 'build', 'both')
@@ -187,6 +193,8 @@ class CrossEnvBuilder(venv.EnvBuilder):
         # so sort by the length of the longest extension
         sysconfig_paths = sorted(sysconfig_paths,
                                  key=lambda x: len(x.split('.',1)[1]))
+        if self.host_sysconfigdata_file is not None:
+            sysconfig_paths = [self.host_sysconfigdata_file]
         self.host_sysconfigdata = None
         for path in sysconfig_paths:
             basename = os.path.basename(path)
@@ -309,13 +317,22 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
         self.host_platform = sys.platform # Default: not actually cross compiling
         with open(self.host_makefile, 'r') as fp:
-            for line in fp:
-                line = line.strip()
-                if line.startswith('_PYTHON_HOST_PLATFORM='):
-                    host_platform = line.split('=',1)[-1]
-                    if host_platform:
-                        self.host_platform = line.split('=',1)[-1]
-                    break
+            lines = list(fp.readlines())
+
+        for line in lines:
+            line = line.strip()
+            if line.startswith('_PYTHON_HOST_PLATFORM='):
+                host_platform = line.split('=',1)[-1]
+                if host_platform:
+                    self.host_platform = line.split('=',1)[-1]
+                break
+
+        self.macosx_deployment_target = ''
+        for line in lines:
+            line = line.strip()
+            if line.startswith('MACOSX_DEPLOYMENT_TARGET='):
+                self.macosx_deployment_target = line.split('=',1)[-1]
+                break
 
         # Sanity checks
         if self.host_version != build_version:
@@ -446,10 +463,26 @@ class CrossEnvBuilder(venv.EnvBuilder):
             sysname = host_info[0]
             machine = host_info[-1]
 
+        release = ''
+        if self.macosx_deployment_target:
+            try:
+                major, minor = self.macosx_deployment_target.split(".")
+                major, minor = int(major), int(minor)
+            except ValueError:
+                raise ValueError("Unexpected value %s for MACOSX_DEPLOYMENT_TARGET" %
+                        self.macosx_deployment_target)
+            if major == 10:
+                release = "%s.0.0" % (minor + 4)
+            elif major == 11:
+                release = "%s.0.0" % (minor + 20)
+            else:
+                raise ValueError("Unexpected major version %s for MACOSX_DEPLOYMENT_TARGET" %
+                        major)
+
         config['uname'] = {
             'sysname' : sysname.title(),
             'nodename' : 'build',
-            'release' : '',
+            'release' : release,
             'version' : '',
             'machine' : machine,
         }
@@ -619,6 +652,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
             if not os.path.exists(exe):
                 utils.symlink(context.python_exe, exe)
 
+        macosx_deployment_target = self.macosx_deployment_target
         # Install patches to environment
         utils.install_script('site.py.tmpl',
                 os.path.join(context.lib_path, 'site.py'),
@@ -851,6 +885,12 @@ def main():
                 If not given, an attempt will be made to guess. This is used
                 to trick some packages into finding required headers and is
                 optional.""")
+    parser.add_argument('--sysconfigdata-file', action='store',
+        help="""Explicitly set the sysconfigdata file path.
+                If not given, all sysconfigdata files will be searched and
+                will error if there are multiple files that have different
+                values. This option is a workaround for specifically
+                conda python where multiple sysconfigdata files exist.""")
     parser.add_argument('-v', '--verbose', action='count', default=0,
         help="""Verbose mode. May be specified multiple times to increase
                 verbosity.""")
@@ -892,6 +932,7 @@ def main():
                 host_ar=args.ar,
                 host_relativize=args.relative_toolchain,
                 host_config_vars = config_vars,
+                host_sysconfigdata_file=args.sysconfigdata_file,
                 )
         for env_dir in args.ENV_DIR:
             builder.create(env_dir)
