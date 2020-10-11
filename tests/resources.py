@@ -6,11 +6,31 @@ import subprocess
 import string
 import copy
 from distutils.dir_util import copy_tree
+from collections import namedtuple
 
 import pytest
 
 from .testutils import ExecEnvironment, hash_file
 
+Architecture = namedtuple('Architecture', 'name system machine')
+
+ARCHITECTURES = [
+    Architecture(
+        name='aarch64-linux-musl',
+        system='Linux',
+        machine='aarch64',
+    ),
+    Architecture(
+        name='arm-linux-musleabihf',
+        system='Linux',
+        machine='arm',
+    ),
+]
+
+PY_VERSIONS = [
+    '3.8.1',
+    '3.9.0',
+]
 
 # This structure declares all the prebuilt resources we need. Each tag refers
 # to a file or directory, that might need to be extracted. Really, we just
@@ -20,7 +40,6 @@ from .testutils import ExecEnvironment, hash_file
 #
 # The binary attribute would be e.g., an executable to run. The env field is a
 # dictionary specifying the environment needed to run it.
-
 PREBUILT_RESOURCES = {
     'build-python:3.8.1': {
         'source': 'prebuilt_musl_arm_aarch64.tar.xz',
@@ -68,6 +87,7 @@ PREBUILT_RESOURCES = {
         'source': 'hello',
     },
 }
+
 
 class PrebuiltBlobs:
     """We assume that all pre-built blobs defined in RESOURCES are needed,
@@ -185,25 +205,15 @@ class Resource(ExecEnvironment):
                   preserve_symlinks=symlinks)
         return new_env
 
-ARCHITECTURES = [
-    'aarch64-linux-musl',
-    'arm-linux-musleabihf',
-]
-
-PY_VERSIONS = [
-    '3.8.1',
-    '3.9.0',
-]
-
-@pytest.fixture(params=ARCHITECTURES)
+@pytest.fixture(params=ARCHITECTURES, scope='session')
 def architecture(request):
     return request.param
 
-@pytest.fixture(params=PY_VERSIONS)
+@pytest.fixture(params=PY_VERSIONS, scope='session')
 def python_version(request):
     return request.param
 
-@pytest.fixture
+@pytest.fixture(scope='session')
 def build_python(python_version):
     build_python_tag = 'build-python:{}'.format(python_version)
     if not Resource.exists(build_python_tag):
@@ -212,16 +222,16 @@ def build_python(python_version):
 
     return Resource(build_python_tag)
 
-@pytest.fixture
+@pytest.fixture(scope='session')
 def host_python(architecture, python_version):
-    host_python_tag = 'host-python:{}:{}'.format(python_version, architecture)
+    host_python_tag = 'host-python:{}:{}'.format(python_version, architecture.name)
     if not Resource.exists(host_python_tag):
         pytest.skip('No Python version {} available for {}'.format(
-            python_version, architecture))
+            python_version, architecture.name))
 
     return Resource(host_python_tag)
 
-@pytest.fixture
+@pytest.fixture(scope='session')
 def get_resource(tmp_path_factory):
     def _get_resource(tag):
         r = Resource(tag)

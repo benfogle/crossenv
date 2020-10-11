@@ -6,6 +6,7 @@ import hashlib
 import pytest
 
 from .resources import prebuilt_blobs
+from . import testutils
 
 # Fixtures for everyone. Make sure to include fixture-of-fixture
 # dependencies...
@@ -26,3 +27,10 @@ def pytest_configure(config):
     else:
         path = str(crossenv_dir)
     os.environ['PYTHONPATH'] = path
+
+@pytest.fixture(scope='module')
+def crossenv(tmp_path_factory, host_python, build_python):
+    """Convenience fixture for a per-module crossenv with default
+    parameters."""
+    tmp = tmp_path_factory.mktemp('crossenv')
+    return testutils.make_crossenv(tmp, host_python, build_python)
