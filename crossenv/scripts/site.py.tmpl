@@ -32,6 +32,7 @@ os.environ['PYTHON_CROSSENV'] = 'x'
 for name in ['_PYTHON_PROJECT_BASE', '_PYTHON_HOST_PLATFORM',
              '_PYTHON_SYSCONFIGDATA_NAME', 'PYTHONHOME', 'PYTHONPATH']:
     try:
+        # Using os.putenv causes the environments to diverge
         os.putenv(name, os.environ['_OLD_' + name])
         del os.environ['_OLD_' + name]
     except KeyError:
@@ -133,8 +134,8 @@ os.uname = uname
 import platform
 processor = config.get('uname', 'processor', fallback=None)
 if processor is None:
-    processor = config.get('uname', 'machine', fallback=None)
-platform_uname_result_type = namedtuple('uname_result_base',
+    processor = config.get('uname', 'machine', fallback='')
+platform_uname_result_type = namedtuple('uname_result',
                     'system node release version machine processor')
 uname_result2 = platform_uname_result_type(
         config.get('uname', 'sysname', fallback=''),
