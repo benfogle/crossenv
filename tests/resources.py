@@ -205,7 +205,7 @@ class Resource(ExecEnvironment):
                   preserve_symlinks=symlinks)
         return new_env
 
-@pytest.fixture(params=ARCHITECTURES, scope='session')
+@pytest.fixture(params=ARCHITECTURES, scope='session', ids=lambda a: a.name)
 def architecture(request):
     return request.param
 
