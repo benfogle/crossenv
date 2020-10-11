@@ -6,10 +6,31 @@ import subprocess
 import string
 import copy
 from distutils.dir_util import copy_tree
+from collections import namedtuple
 
 import pytest
 
 from .testutils import ExecEnvironment, hash_file
+
+Architecture = namedtuple('Architecture', 'name system machine')
+
+ARCHITECTURES = [
+    Architecture(
+        name='aarch64-linux-musl',
+        system='Linux',
+        machine='aarch64',
+    ),
+    Architecture(
+        name='arm-linux-musleabihf',
+        system='Linux',
+        machine='arm',
+    ),
+]
+
+PY_VERSIONS = [
+    '3.8.1',
+]
+
 
 PREBUILT_RESOURCES = {
     'build-python:3.8.1': {
@@ -37,6 +58,7 @@ PREBUILT_RESOURCES = {
         'source': 'hello',
     },
 }
+
 
 class PrebuiltBlobs:
     def __init__(self):
@@ -130,24 +152,15 @@ class Resource(ExecEnvironment):
                   preserve_symlinks=symlinks)
         return new_env
 
-ARCHITECTURES = [
-    'aarch64-linux-musl',
-    'arm-linux-musleabihf',
-]
-
-PY_VERSIONS = [
-    '3.8.1',
-]
-
-@pytest.fixture(params=ARCHITECTURES)
+@pytest.fixture(params=ARCHITECTURES, scope='session')
 def architecture(request):
     return request.param
 
-@pytest.fixture(params=PY_VERSIONS)
+@pytest.fixture(params=PY_VERSIONS, scope='session')
 def python_version(request):
     return request.param
 
-@pytest.fixture
+@pytest.fixture(scope='session')
 def build_python(python_version):
     build_python_tag = 'build-python:{}'.format(python_version)
     if not Resource.exists(build_python_tag):
@@ -156,16 +169,16 @@ def build_python(python_version):
 
     return Resource(build_python_tag)
 
-@pytest.fixture
+@pytest.fixture(scope='session')
 def host_python(architecture, python_version):
-    host_python_tag = 'host-python:{}:{}'.format(python_version, architecture)
+    host_python_tag = 'host-python:{}:{}'.format(python_version, architecture.name)
     if not Resource.exists(host_python_tag):
         pytest.skip('No Python version {} available for {}'.format(
-            python_version, architecture))
+            python_version, architecture.name))
 
     return Resource(host_python_tag)
 
-@pytest.fixture
+@pytest.fixture(scope='session')
 def get_resource(tmp_path_factory):
     def _get_resource(tag):
         r = Resource(tag)
