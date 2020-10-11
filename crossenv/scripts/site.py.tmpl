@@ -31,13 +31,12 @@ os.environ['PYTHON_CROSSENV'] = 'x'
 # We'll try not to do that unless we really have to.
 for name in ['_PYTHON_PROJECT_BASE', '_PYTHON_HOST_PLATFORM',
              '_PYTHON_SYSCONFIGDATA_NAME', 'PYTHONHOME', 'PYTHONPATH']:
-    # This is the same as os.putenv/os.unsetenv, but I want to be clear that
-    # I'm trying to break something.
     try:
-        os.environ.putenv(name, os.environ['_OLD_' + name])
+        # Using os.putenv causes the environments to diverge
+        os.putenv(name, os.environ['_OLD_' + name])
         del os.environ['_OLD_' + name]
     except KeyError:
-        os.environ.unsetenv(name)
+        os.unsetenv(name)
 
 
 # sysconfig isn't _quite_ set up right, because it queries from a not-yet fixed
@@ -135,8 +134,10 @@ os.uname = uname
 import platform
 processor = config.get('uname', 'processor', fallback=None)
 if processor is None:
-    processor = config.get('uname', 'machine', fallback=None)
-uname_result2 = platform.uname_result(
+    processor = config.get('uname', 'machine', fallback='')
+platform_uname_result_type = namedtuple('uname_result',
+                    'system node release version machine processor')
+uname_result2 = platform_uname_result_type(
         config.get('uname', 'sysname', fallback=''),
         config.get('uname', 'nodename', fallback=''),
         config.get('uname', 'release', fallback=''),
