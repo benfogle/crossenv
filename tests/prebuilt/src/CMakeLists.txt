@@ -15,6 +15,18 @@ cmake_minimum_required(VERSION 3.6)
 project(crossenv-artifacts NONE)
 include(ExternalProject)
 
+set(PYTHON_VERSIONS
+    3.8.1
+    3.9.0
+    )
+set(PYTHON_URLS
+    https://www.python.org/ftp/python/3.8.1/Python-3.8.1.tar.xz
+    https://www.python.org/ftp/python/3.9.0/Python-3.9.0.tar.xz
+    )
+set(PYTHON_HASHES
+    MD5=b3fb85fd479c0bf950c626ef80cacb57
+    MD5=6ebfe157f6e88d9eabfbaf3fa92129f6
+    )
 
 ##############################################################################
 # MUSL-gcc toolchains
@@ -306,85 +318,94 @@ add_custom_target(prereqs
 # as part of build-python
 ##############################################################################
 
-ExternalProject_Add(build-python-3.8.1
-    INSTALL_DIR         ${CMAKE_INSTALL_PREFIX}/python/3.8.1/build
-    DOWNLOAD_DIR        python-download
-    SOURCE_DIR          python-source-3.8.1
-    URL                 https://www.python.org/ftp/python/3.8.1/Python-3.8.1.tar.xz
-    URL_HASH            MD5=b3fb85fd479c0bf950c626ef80cacb57
-    CONFIGURE_COMMAND   <SOURCE_DIR>/configure
-                            --prefix=<INSTALL_DIR>
-    BUILD_COMMAND       make -j8
-    INSTALL_COMMAND     make install
-)
-ExternalProject_Get_Property(build-python-3.8.1 INSTALL_DIR)
-set(BUILD_PYTHON_BIN ${INSTALL_DIR}/bin)
-set(BUILD_PYTHON_LIB ${INSTALL_DIR}/lib)
-set(BUILD_PYTHON_PATH ${MUSL_TOOLCHAIN_BIN}:${BUILD_PYTHON_BIN}:$ENV{PATH})
+list(LENGTH PYTHON_VERSIONS num_versions)
+math(EXPR num_versions "${num_versions} - 1")
+
+foreach(index RANGE ${num_versions})
+    list(GET PYTHON_VERSIONS ${index} pyversion)
+    list(GET PYTHON_URLS ${index} pyurl)
+    list(GET PYTHON_HASHES ${index} pyhash)
+
+    ExternalProject_Add(build-python-${pyversion}
+        INSTALL_DIR         ${CMAKE_INSTALL_PREFIX}/python/${pyversion}/build
+        DOWNLOAD_DIR        python-download
+        SOURCE_DIR          python-source-${pyversion}
+        URL                 ${pyurl}
+        URL_HASH            ${pyhash}
+        CONFIGURE_COMMAND   <SOURCE_DIR>/configure
+                                --prefix=<INSTALL_DIR>
+        BUILD_COMMAND       make -j8
+        INSTALL_COMMAND     make install
+    )
+    ExternalProject_Get_Property(build-python-${pyversion} INSTALL_DIR)
+    set(BUILD_PYTHON_BIN ${INSTALL_DIR}/bin)
+    set(BUILD_PYTHON_LIB ${INSTALL_DIR}/lib)
+    set(BUILD_PYTHON_PATH ${MUSL_TOOLCHAIN_BIN}:${BUILD_PYTHON_BIN}:$ENV{PATH})
 
 
-# set rpath to run from install directory. Prevents a mess of LD_LIBRARY_PATH when
-# we're running under emulation.
-set(rpaths
-    -Wl,-rpath='\$\${ORIGIN}/../../../../musl-toolchain/aarch64-linux-musl/lib'
-    -Wl,-rpath='\$\${ORIGIN}/../../../../musl-toolchain/aarch64-linux-musl/usr/lib'
-    -Wl,-rpath='\$\${ORIGIN}/../lib'
-)
-string(REPLACE ";" " " rpaths "${rpaths}") # join ;-list with " "
+    # set rpath to run from install directory. Prevents a mess of LD_LIBRARY_PATH when
+    # we're running under emulation. We might not be able to completely avoid that.
+    set(rpaths
+        -Wl,-rpath='\$\${ORIGIN}/../../../../musl-toolchain/aarch64-linux-musl/lib'
+        -Wl,-rpath='\$\${ORIGIN}/../../../../musl-toolchain/aarch64-linux-musl/usr/lib'
+        -Wl,-rpath='\$\${ORIGIN}/../lib'
+    )
+    string(REPLACE ";" " " rpaths "${rpaths}") # join ;-list with " "
 
 
-ExternalProject_Add(host-python-3.8.1-aarch64
-    INSTALL_DIR         ${CMAKE_INSTALL_PREFIX}/python/3.8.1/aarch64
-    DOWNLOAD_COMMAND    ""
-    SOURCE_DIR          python-source-3.8.1
-    CONFIGURE_COMMAND   ${CMAKE_COMMAND} -E env PATH=${BUILD_PYTHON_PATH}
-                        <SOURCE_DIR>/configure
-                            --prefix=<INSTALL_DIR>
-                            --enable-shared
-                            --host=aarch64-linux-musl
-                            --build=x86_64-linux-gnu
-                            --without-ensurepip
-                            ac_cv_buggy_getaddrinfo=no
-                            ac_cv_file__dev_ptmx=yes
-                            ac_cv_file__dev_ptc=no
-                            "LDFLAGS=${rpaths}"
-    BUILD_COMMAND       ${CMAKE_COMMAND} -E env PATH=${BUILD_PYTHON_PATH}
-                        make -j8
-    INSTALL_COMMAND     ${CMAKE_COMMAND} -E env PATH=${BUILD_PYTHON_PATH}
-                        make install
-    DEPENDS             prereqs
-                        build-python-3.8.1
-)
+    ExternalProject_Add(host-python-${pyversion}-aarch64
+        INSTALL_DIR         ${CMAKE_INSTALL_PREFIX}/python/${pyversion}/aarch64
+        DOWNLOAD_COMMAND    ""
+        SOURCE_DIR          python-source-${pyversion}
+        CONFIGURE_COMMAND   ${CMAKE_COMMAND} -E env PATH=${BUILD_PYTHON_PATH}
+                            <SOURCE_DIR>/configure
+                                --prefix=<INSTALL_DIR>
+                                --enable-shared
+                                --host=aarch64-linux-musl
+                                --build=x86_64-linux-gnu
+                                --without-ensurepip
+                                ac_cv_buggy_getaddrinfo=no
+                                ac_cv_file__dev_ptmx=yes
+                                ac_cv_file__dev_ptc=no
+                                "LDFLAGS=${rpaths}"
+        BUILD_COMMAND       ${CMAKE_COMMAND} -E env PATH=${BUILD_PYTHON_PATH}
+                            make -j8
+        INSTALL_COMMAND     ${CMAKE_COMMAND} -E env PATH=${BUILD_PYTHON_PATH}
+                            make install
+        DEPENDS             prereqs
+                            build-python-${pyversion}
+    )
 
 
-# set rpath to run from install directory. Prevents a mess of LD_LIBRARY_PATH when
-# we're running under emulation.
-set(rpaths
-    -Wl,-rpath='\$\${ORIGIN}/../../../../musl-toolchain/arm-linux-musleabi/lib'
-    -Wl,-rpath='\$\${ORIGIN}/../../../../musl-toolchain/arm-linux-musleabi/usr/lib'
-    -Wl,-rpath='\$\${ORIGIN}/../lib'
-)
-string(REPLACE ";" " " rpaths "${rpaths}") # join ;-list with " "
+    # set rpath to run from install directory. Prevents a mess of LD_LIBRARY_PATH when
+    # we're running under emulation.
+    set(rpaths
+        -Wl,-rpath='\$\${ORIGIN}/../../../../musl-toolchain/arm-linux-musleabi/lib'
+        -Wl,-rpath='\$\${ORIGIN}/../../../../musl-toolchain/arm-linux-musleabi/usr/lib'
+        -Wl,-rpath='\$\${ORIGIN}/../lib'
+    )
+    string(REPLACE ";" " " rpaths "${rpaths}") # join ;-list with " "
 
-ExternalProject_Add(host-python-3.8.1-armhf
-    INSTALL_DIR         ${CMAKE_INSTALL_PREFIX}/python/3.8.1/armhf
-    DOWNLOAD_COMMAND    ""
-    SOURCE_DIR          python-source-3.8.1
-    CONFIGURE_COMMAND   ${CMAKE_COMMAND} -E env PATH=${BUILD_PYTHON_PATH}
-                        <SOURCE_DIR>/configure
-                            --prefix=<INSTALL_DIR>
-                            --enable-shared
-                            --host=arm-linux-musleabihf
-                            --build=x86_64-linux-gnu
-                            --without-ensurepip
-                            ac_cv_buggy_getaddrinfo=no
-                            ac_cv_file__dev_ptmx=yes
-                            ac_cv_file__dev_ptc=no
-                            "LDFLAGS=${rpaths}"
-    BUILD_COMMAND       ${CMAKE_COMMAND} -E env PATH=${BUILD_PYTHON_PATH}
-                        make -j8
-    INSTALL_COMMAND     ${CMAKE_COMMAND} -E env PATH=${BUILD_PYTHON_PATH}
-                        make install
-    DEPENDS             prereqs
-                        build-python-3.8.1
-)
+    ExternalProject_Add(host-python-${pyversion}-armhf
+        INSTALL_DIR         ${CMAKE_INSTALL_PREFIX}/python/${pyversion}/armhf
+        DOWNLOAD_COMMAND    ""
+        SOURCE_DIR          python-source-${pyversion}
+        CONFIGURE_COMMAND   ${CMAKE_COMMAND} -E env PATH=${BUILD_PYTHON_PATH}
+                            <SOURCE_DIR>/configure
+                                --prefix=<INSTALL_DIR>
+                                --enable-shared
+                                --host=arm-linux-musleabihf
+                                --build=x86_64-linux-gnu
+                                --without-ensurepip
+                                ac_cv_buggy_getaddrinfo=no
+                                ac_cv_file__dev_ptmx=yes
+                                ac_cv_file__dev_ptc=no
+                                "LDFLAGS=${rpaths}"
+        BUILD_COMMAND       ${CMAKE_COMMAND} -E env PATH=${BUILD_PYTHON_PATH}
+                            make -j8
+        INSTALL_COMMAND     ${CMAKE_COMMAND} -E env PATH=${BUILD_PYTHON_PATH}
+                            make install
+        DEPENDS             prereqs
+                            build-python-${pyversion}
+    )
+endforeach()
