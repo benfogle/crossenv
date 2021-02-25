@@ -26,3 +26,11 @@ steps:
       inputs:
           testResultsFiles: '**/test-*.xml'
           testRunTitle: 'Publish test results'
+
+schedules:
+    - cron: "0 12 * * 0"
+      displayName: "Weekly build"
+      branches:
+          include:
+              - master
+      always: true
