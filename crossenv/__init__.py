@@ -580,10 +580,15 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 with_pip=False)
         env.create(context.cross_env_dir)
         context.cross_bin_path = os.path.join(context.cross_env_dir, 'bin')
+        context.cross_lib_path = os.path.join(context.cross_env_dir, 'lib')
         context.cross_env_exe = os.path.join(
                 context.cross_bin_path, context.python_exe)
         context.cross_cfg_path = os.path.join(context.cross_env_dir, 'pyvenv.cfg')
         context.cross_activate = os.path.join(context.cross_bin_path, 'activate')
+
+        pyver = 'python' + sysconfig.get_config_var('py_version_short')
+        context.cross_site_lib_path = os.path.join(context.cross_lib_path,
+                pyver, 'site-packages')
 
         # Remove binaries. We'll run from elsewhere
         for exe in os.listdir(context.cross_bin_path):
@@ -656,6 +661,9 @@ class CrossEnvBuilder(venv.EnvBuilder):
         # Install patches to environment
         utils.install_script('site.py.tmpl',
                 os.path.join(context.lib_path, 'site.py'),
+                locals())
+        utils.install_script('_manylinux.py.tmpl',
+                os.path.join(context.cross_site_lib_path, '_manylinux.py'),
                 locals())
         self.copy_and_patch_sysconfigdata(context)
 
