@@ -1,3 +1,9 @@
+parameters:
+    - name: enable_python_master
+      displayName: Test against Python master branch
+      type: boolean
+      default: false
+
 pool:
     vmImage: 'ubuntu-18.04'
 
@@ -17,6 +23,14 @@ steps:
         git lfs pull
       displayName: Pull prebuilt binaries
 
+    # This step is usually disabled. We only do this for our weekly builds, or
+    # if it was specifically requested in a commit message
+    - ${{ if or(eq(parameters.enable_python_master, true), eq(variables['Build.Reason'], 'Scheduled')) }}:
+      - script: |
+          tar xf tests/prebuilt/prebuilt_musl_arm_aarch64.tar.xz
+          ./tests/prebuilt/make_master.sh $PWD/prebuilt_musl_arm_aarch64/musl-toolchain
+        displayName: Cross compile Python master branch
+
     - script: |
         pytest --junit-xml=test-results.xml
       displayName: Run tests
@@ -26,7 +40,6 @@ steps:
       inputs:
           testResultsFiles: '**/test-*.xml'
           testRunTitle: 'Publish test results'
-
 schedules:
     - cron: "0 12 * * 0"
       displayName: "Weekly build"

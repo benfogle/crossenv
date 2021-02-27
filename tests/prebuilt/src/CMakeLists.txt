@@ -15,18 +15,31 @@ cmake_minimum_required(VERSION 3.6)
 project(crossenv-artifacts NONE)
 include(ExternalProject)
 
+set(TOOLCHAIN_ROOT "" CACHE PATH
+    "Path to pre-built toolchain + dependencies")
+
 set(PYTHON_VERSIONS
     3.8.1
     3.9.0
+    master
     )
 set(PYTHON_URLS
     https://www.python.org/ftp/python/3.8.1/Python-3.8.1.tar.xz
     https://www.python.org/ftp/python/3.9.0/Python-3.9.0.tar.xz
+    https://github.com/python/cpython.git
     )
 set(PYTHON_HASHES
     MD5=b3fb85fd479c0bf950c626ef80cacb57
     MD5=6ebfe157f6e88d9eabfbaf3fa92129f6
+    origin/master
     )
+
+add_custom_target(all-build-python)
+add_custom_target(all-host-python)
+add_custom_target(all-python
+    DEPENDS     all-build-python
+                all-host-python
+)
 
 ##############################################################################
 # MUSL-gcc toolchains
@@ -43,6 +56,7 @@ set(PYTHON_HASHES
 set(MUSL_TOOLCHAIN      ${CMAKE_INSTALL_PREFIX}/musl-toolchain)
 set(MUSL_TOOLCHAIN_BIN  ${MUSL_TOOLCHAIN}/bin)
 ExternalProject_Add(musl-toolchain
+    EXCLUDE_FROM_ALL    TRUE
     GIT_REPOSITORY      https://github.com/richfelker/musl-cross-make.git
     GIT_TAG             v0.9.8
     GIT_SHALLOW         TRUE
@@ -74,6 +88,7 @@ ExternalProject_Add(musl-toolchain
 ##############################################################################
 
 ExternalProject_Add(zlib-source
+    EXCLUDE_FROM_ALL    TRUE
     URL                 https://www.zlib.net/zlib-1.2.11.tar.gz
     URL_HASH            SHA256=c3e5e9fdd5004dcb542feda5ee4f0ff0744628baf8ed2dd5d66f8ca1197cb1a1
     SOURCE_DIR          zlib-source
@@ -84,6 +99,7 @@ ExternalProject_Add(zlib-source
 
 
 ExternalProject_Add(zlib-arm
+    EXCLUDE_FROM_ALL    TRUE
     SOURCE_DIR          zlib-source
     INSTALL_DIR         ${MUSL_TOOLCHAIN}/arm-linux-musleabihf/usr
     DOWNLOAD_COMMAND    ""
@@ -105,6 +121,7 @@ ExternalProject_Add(zlib-arm
 
 
 ExternalProject_Add(zlib-aarch64
+    EXCLUDE_FROM_ALL    TRUE
     SOURCE_DIR          zlib-source
     INSTALL_DIR         ${MUSL_TOOLCHAIN}/aarch64-linux-musl/usr
     DOWNLOAD_COMMAND    ""
@@ -127,6 +144,7 @@ ExternalProject_Add(zlib-aarch64
 
 # For libuuid
 ExternalProject_Add(util-linux-source
+    EXCLUDE_FROM_ALL    TRUE
     URL                 https://mirrors.edge.kernel.org/pub/linux/utils/util-linux/v2.35/util-linux-2.35.1.tar.xz
     SOURCE_DIR          util-linux-source
     CONFIGURE_COMMAND   ""
@@ -136,6 +154,7 @@ ExternalProject_Add(util-linux-source
 
 
 ExternalProject_Add(util-linux-aarch64
+    EXCLUDE_FROM_ALL    TRUE
     SOURCE_DIR          util-linux-source
     INSTALL_DIR         ${MUSL_TOOLCHAIN}/aarch64-linux-musl/usr
     DOWNLOAD_COMMAND    ""
@@ -160,6 +179,7 @@ ExternalProject_Add(util-linux-aarch64
 
 
 ExternalProject_Add(util-linux-arm
+    EXCLUDE_FROM_ALL    TRUE
     SOURCE_DIR          util-linux-source
     INSTALL_DIR         ${MUSL_TOOLCHAIN}/arm-linux-musleabihf/usr
     DOWNLOAD_COMMAND    ""
@@ -185,6 +205,7 @@ ExternalProject_Add(util-linux-arm
 
 # for ssl
 ExternalProject_Add(openssl-source
+    EXCLUDE_FROM_ALL    TRUE
     URL                 https://www.openssl.org/source/openssl-1.1.1d.tar.gz
     URL_HASH            SHA256=1e3a91bc1f9dfce01af26026f856e064eab4c8ee0a8f457b5ae30b40b8b711f2
     SOURCE_DIR          openssl-source
@@ -195,6 +216,7 @@ ExternalProject_Add(openssl-source
 
 
 ExternalProject_Add(openssl-arm
+    EXCLUDE_FROM_ALL    TRUE
     SOURCE_DIR          openssl-source
     INSTALL_DIR         ${MUSL_TOOLCHAIN}/arm-linux-musleabihf/usr
     DOWNLOAD_COMMAND    ""
@@ -218,6 +240,7 @@ ExternalProject_Add(openssl-arm
 
 
 ExternalProject_Add(openssl-aarch64
+    EXCLUDE_FROM_ALL    TRUE
     SOURCE_DIR          openssl-source
     INSTALL_DIR         ${MUSL_TOOLCHAIN}/aarch64-linux-musl/usr
     DOWNLOAD_COMMAND    ""
@@ -242,6 +265,7 @@ ExternalProject_Add(openssl-aarch64
 
 # for ctypes
 ExternalProject_Add(libffi-src
+    EXCLUDE_FROM_ALL    TRUE
     URL                 https://github.com/libffi/libffi/releases/download/v3.3/libffi-3.3.tar.gz
     SOURCE_DIR          libffi-src
     CONFIGURE_COMMAND   ""
@@ -251,6 +275,7 @@ ExternalProject_Add(libffi-src
 
 
 ExternalProject_Add(libffi-aarch64
+    EXCLUDE_FROM_ALL    TRUE
     SOURCE_DIR          libffi-src
     INSTALL_DIR         ${MUSL_TOOLCHAIN}/aarch64-linux-musl/usr
     DOWNLOAD_COMMAND    ""
@@ -273,6 +298,7 @@ ExternalProject_Add(libffi-aarch64
 
 
 ExternalProject_Add(libffi-arm
+    EXCLUDE_FROM_ALL    TRUE
     SOURCE_DIR          libffi-src
     INSTALL_DIR         ${MUSL_TOOLCHAIN}/arm-linux-musleabihf/usr
     DOWNLOAD_COMMAND    ""
@@ -321,17 +347,39 @@ add_custom_target(prereqs
 list(LENGTH PYTHON_VERSIONS num_versions)
 math(EXPR num_versions "${num_versions} - 1")
 
+if (TOOLCHAIN_ROOT)
+    set(toolchain_path ${TOOLCHAIN_ROOT}/bin)
+    get_filename_component(toolchain_path ${toolchain_path} ABSOLUTE)
+    set(toolchain_deps)
+else()
+    set(toolchain_path ${MUSL_TOOLCHAIN_BIN})
+    set(toolchain_deps prereqs)
+endif()
+
 foreach(index RANGE ${num_versions})
     list(GET PYTHON_VERSIONS ${index} pyversion)
     list(GET PYTHON_URLS ${index} pyurl)
     list(GET PYTHON_HASHES ${index} pyhash)
 
+    # special case master version
+    if (pyversion STREQUAL "master")
+        set(download
+            GIT_REPOSITORY      ${pyurl}
+            GIT_TAG             ${pyhash}
+            )
+    else()
+        set(download
+            URL                 ${pyurl}
+            URL_HASH            ${pyhash}
+            )
+    endif()
+
     ExternalProject_Add(build-python-${pyversion}
+        EXCLUDE_FROM_ALL    TRUE
         INSTALL_DIR         ${CMAKE_INSTALL_PREFIX}/python/${pyversion}/build
         DOWNLOAD_DIR        python-download
         SOURCE_DIR          python-source-${pyversion}
-        URL                 ${pyurl}
-        URL_HASH            ${pyhash}
+        ${download}
         CONFIGURE_COMMAND   <SOURCE_DIR>/configure
                                 --prefix=<INSTALL_DIR>
         BUILD_COMMAND       make -j8
@@ -340,7 +388,9 @@ foreach(index RANGE ${num_versions})
     ExternalProject_Get_Property(build-python-${pyversion} INSTALL_DIR)
     set(BUILD_PYTHON_BIN ${INSTALL_DIR}/bin)
     set(BUILD_PYTHON_LIB ${INSTALL_DIR}/lib)
-    set(BUILD_PYTHON_PATH ${MUSL_TOOLCHAIN_BIN}:${BUILD_PYTHON_BIN}:$ENV{PATH})
+    set(BUILD_PYTHON_PATH ${toolchain_path}:${BUILD_PYTHON_BIN}:$ENV{PATH})
+
+    add_dependencies(all-build-python build-python-${pyversion})
 
 
     # set rpath to run from install directory. Prevents a mess of LD_LIBRARY_PATH when
@@ -354,6 +404,7 @@ foreach(index RANGE ${num_versions})
 
 
     ExternalProject_Add(host-python-${pyversion}-aarch64
+        EXCLUDE_FROM_ALL    TRUE
         INSTALL_DIR         ${CMAKE_INSTALL_PREFIX}/python/${pyversion}/aarch64
         DOWNLOAD_COMMAND    ""
         SOURCE_DIR          python-source-${pyversion}
@@ -372,9 +423,10 @@ foreach(index RANGE ${num_versions})
                             make -j8
         INSTALL_COMMAND     ${CMAKE_COMMAND} -E env PATH=${BUILD_PYTHON_PATH}
                             make install
-        DEPENDS             prereqs
+        DEPENDS             ${toolchain_deps}
                             build-python-${pyversion}
     )
+    add_dependencies(all-host-python host-python-${pyversion}-aarch64)
 
 
     # set rpath to run from install directory. Prevents a mess of LD_LIBRARY_PATH when
@@ -387,6 +439,7 @@ foreach(index RANGE ${num_versions})
     string(REPLACE ";" " " rpaths "${rpaths}") # join ;-list with " "
 
     ExternalProject_Add(host-python-${pyversion}-armhf
+        EXCLUDE_FROM_ALL    TRUE
         INSTALL_DIR         ${CMAKE_INSTALL_PREFIX}/python/${pyversion}/armhf
         DOWNLOAD_COMMAND    ""
         SOURCE_DIR          python-source-${pyversion}
@@ -405,7 +458,13 @@ foreach(index RANGE ${num_versions})
                             make -j8
         INSTALL_COMMAND     ${CMAKE_COMMAND} -E env PATH=${BUILD_PYTHON_PATH}
                             make install
-        DEPENDS             prereqs
+        DEPENDS             ${toolchain_deps}
                             build-python-${pyversion}
+    )
+    add_dependencies(all-host-python host-python-${pyversion}-armhf)
+
+    add_custom_target(all-host-python-${pyversion}
+        DEPENDS host-python-${pyversion}-armhf
+                host-python-${pyversion}-aarch64
     )
 endforeach()

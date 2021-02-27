@@ -17,7 +17,10 @@ class ExecEnvironment:
     '''Mostly some wrappers around popen'''
 
     def __init__(self):
-        self.environ = {}
+        # prepopulate the environment
+        self.environ = {
+            'PATH': os.environ.get('PATH', ''),
+        }
         self.cwd = None
 
     def expand_environ(self, value):
@@ -114,7 +117,12 @@ def make_crossenv(crossenv_dir, host_python, build_python, *args, **kwargs):
     cmdline = [ build_python.binary, '-m', 'crossenv', host_python.binary,
             crossenv_dir ]
     cmdline.extend(args)
-    out = build_python.check_output(cmdline,
-                                    stderr=subprocess.STDOUT,
-                                    universal_newlines=True, **kwargs)
-    return CrossenvEnvironment(build_python, crossenv_dir, creation_log=out)
+    result = build_python.run(cmdline,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, universal_newlines=True,
+            **kwargs)
+    if result.returncode:
+        print(result.stdout) # capture output on error
+        assert False, "Could not make crossenv!"
+    return CrossenvEnvironment(build_python, crossenv_dir,
+            creation_log=result.stdout)
