@@ -1,4 +1,7 @@
+import os
 from textwrap import dedent
+
+from .testutils import make_crossenv
 
 def test_uname(crossenv, architecture):
     # We don't test all of uname. We currently have no values for release or
@@ -53,3 +56,11 @@ def test_no_manylinux(crossenv, architecture):
             universal_newlines=True)
     out = out.strip()
     assert 'manylinux' not in out
+
+def test_very_long_paths(tmp_path_factory, host_python, build_python):
+    tmp = tmp_path_factory.mktemp('A'*128)
+    dirname = tmp / ('B'*128)
+    os.mkdir(dirname)
+    assert len(str(dirname)) >= 256
+    crossenv = make_crossenv(dirname, host_python, build_python)
+    crossenv.check_call(['python', '--version'])

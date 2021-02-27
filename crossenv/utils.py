@@ -70,10 +70,36 @@ def make_launcher(src, dst):
             exec %(src)s "$@"
             ''', locals())))
 
+def fixup_shebang(src):
+    """Alter the shebang line if it's too long, as can happen somethings with
+    e.g., Jenkins. This trick is taken from what pip does."""
+    if not src.startswith('#!'):
+        return src
+
+    # full line, including newline
+    try:
+        end = src.index('\n') + 1
+    except ValueError:
+        end = len(src)
+    shebang = src[:end]
+
+    if len(shebang.encode('utf-8')) <= 127:
+        return src
+
+    interp = shebang[2:].strip()
+    preamble = dedent(F("""\
+        #!/bin/sh
+        '''exec' %(interp)s $0 "$@"
+        '''
+        """, locals()))
+    return preamble + src[end:]
+
+
 def install_script(name, dst, values, perms=0o755):
     srcname = os.path.join('scripts', name)
     src = pkgutil.get_data(__package__, srcname)
     src = F(src.decode(), values)
+    src = fixup_shebang(src)
     mkdir_if_needed(os.path.dirname(dst))
 
     with overwrite_file(dst, perms=perms) as fp:
