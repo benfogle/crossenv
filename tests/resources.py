@@ -30,6 +30,7 @@ ARCHITECTURES = [
 PY_VERSIONS = [
     '3.8.1',
     '3.9.0',
+    'master', # not always enabled
 ]
 
 # This structure declares all the prebuilt resources we need. Each tag refers
@@ -83,6 +84,31 @@ PREBUILT_RESOURCES = {
             'QEMU_LD_PREFIX': '$SOURCE/prebuilt_musl_arm_aarch64/musl-toolchain/arm-linux-musleabihf',
         }
     },
+    # master is a bit of an anomaly: we don't pre build it. Instead we just
+    # expect it to be there, and it's the test driver's responsibility to make
+    # sure it's actually present. See prebuilt/src/CMakeLists.txt for help.
+    # The master build is diabled by default anyway.
+    'build-python:master': {
+        'source': 'python/master/build',
+        'binary': 'bin/python3',
+        'env': {
+            'PATH': '$EXTRACTED/prebuilt_musl_arm_aarch64/musl-toolchain/bin:$PATH',
+        },
+    },
+    'host-python:master:aarch64-linux-musl': {
+        'source': 'python/master/aarch64',
+        'binary': 'bin/python3',
+        'env': {
+            'QEMU_LD_PREFIX': '$EXTRACTED/prebuilt_musl_arm_aarch64/musl-toolchain/aarch64-linux-musl',
+        },
+    },
+    'host-python:master:arm-linux-musleabihf': {
+        'source': 'python/master/armhf',
+        'binary': 'bin/python3',
+        'env': {
+            'QEMU_LD_PREFIX': '$EXTRACTED/prebuilt_musl_arm_aarch64/musl-toolchain/arm-linux-musleabihf',
+        }
+    },
     'hello-module:source': {
         'source': 'hello',
     },
@@ -134,9 +160,12 @@ class PrebuiltBlobs:
             # things change, we won't have a conflict.
             archives = set()
             for tag, info in self.resources.items():
-                src = self.find_source(info['source'])
-                if src.is_file():
-                    archives.add(src)
+                try:
+                    src = self.find_source(info['source'])
+                    if src.is_file():
+                        archives.add(src)
+                except FileNotFoundError:
+                    pass
 
             digest = hashlib.sha256()
             for arc in sorted(archives):
@@ -181,6 +210,7 @@ class Resource(ExecEnvironment):
             self.binary = self.path / self.binary
 
         self.setenv('SOURCE', str(self.path))
+        self.setenv('EXTRACTED', str(prebuilt_blobs.extract_dir))
         for name, value in info.get('env', {}).items():
             self.setenv(name, value)
 
@@ -205,6 +235,10 @@ class Resource(ExecEnvironment):
                   preserve_symlinks=symlinks)
         return new_env
 
+    def __repr__(self):
+        return '<Resource {}>'.format(self.binary or self.path)
+
+
 @pytest.fixture(params=ARCHITECTURES, scope='session', ids=lambda a: a.name)
 def architecture(request):
     return request.param
@@ -216,20 +250,27 @@ def python_version(request):
 @pytest.fixture(scope='session')
 def build_python(python_version):
     build_python_tag = 'build-python:{}'.format(python_version)
-    if not Resource.exists(build_python_tag):
+    try:
+        return Resource(build_python_tag)
+    except KeyError:
         pytest.skip('No build-python version {} available'.format(
             python_version))
-
-    return Resource(build_python_tag)
+    except FileNotFoundError:
+        pytest.skip('Build-python version {} registerd, but not found on '
+                'disk'.format(python_version))
 
 @pytest.fixture(scope='session')
 def host_python(architecture, python_version):
     host_python_tag = 'host-python:{}:{}'.format(python_version, architecture.name)
-    if not Resource.exists(host_python_tag):
+    try:
+        return Resource(host_python_tag)
+    except KeyError:
         pytest.skip('No Python version {} available for {}'.format(
             python_version, architecture.name))
+    except FileNotFoundError:
+        pytest.skip('Python version {} for {} registerd, but not found on '
+                'disk'.format(python_version, architecture.name))
 
-    return Resource(host_python_tag)
 
 @pytest.fixture(scope='session')
 def get_resource(tmp_path_factory):
