@@ -501,7 +501,8 @@ class CrossEnvBuilder(venv.EnvBuilder):
         env = venv.EnvBuilder(
                 system_site_packages=self.build_system_site_packages,
                 clear=self.clear_build,
-                with_pip=self.with_build_pip)
+                with_pip=self.with_build_pip,
+                symlinks=True)
         env.create(context.build_env_dir)
         context.build_bin_path = os.path.join(context.build_env_dir, 'bin')
         context.build_env_exe = os.path.join(
