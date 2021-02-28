@@ -278,6 +278,7 @@ def setup_coverage(venv_python):
             branch = True
             source = crossenv
             data_file = {}
+            parallel = True
             '''.format(coverage_file)))
 
     # Enable it
