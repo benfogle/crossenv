@@ -42,8 +42,8 @@ steps:
           testRunTitle: 'Publish test results'
 
     - script: |
+        coverage combine
         coverage xml
-        coverage html
       condition: succeededOrFailed()
       displayName: Collect code coverage
 
@@ -52,7 +52,6 @@ steps:
       inputs:
         codeCoverageTool: Cobertura
         summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage.xml'
-        reportDirectory: '$(System.DefaultWorkingDirectory)/htmlcov'
 
 schedules:
     - cron: "0 12 * * 0"
