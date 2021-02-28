@@ -5,6 +5,7 @@ import hashlib
 import subprocess
 import string
 import copy
+from textwrap import dedent
 from distutils.dir_util import copy_tree
 from collections import namedtuple
 
@@ -235,6 +236,10 @@ class Resource(ExecEnvironment):
                   preserve_symlinks=symlinks)
         return new_env
 
+    def derive(self):
+        """A shallow copy that we can alter independently"""
+        return copy.copy(self)
+
     def __repr__(self):
         return '<Resource {}>'.format(self.binary or self.path)
 
@@ -247,17 +252,62 @@ def architecture(request):
 def python_version(request):
     return request.param
 
+def setup_coverage(venv_python):
+    """Get code coverage, if requested. This is tricker than normal, because
+    we're gathering coverage for a completely different interpreter than the
+    one that is driving the tests.
+
+    This covers the creation of crossenv, and nothing after that."""
+
+    # Install coverage, make it active automatically
+    python = venv_python.binary
+    venv_python.check_call([python, '-m', 'pip', 'install', 'coverage'])
+    site_packages = Path(venv_python.check_output([python, '-c',
+        'import site; print(site.getsitepackages()[0])'],
+        universal_newlines=True).strip())
+    with open(site_packages / 'cov.pth', 'w') as fp:
+        fp.write('import coverage; coverage.process_startup()\n')
+
+    # Configure coverage
+    coverage_file = Path('./.coverage').resolve() # output in cwd
+
+    coverage_config = venv_python.path / '.coveragerc'
+    with open(coverage_config, 'w') as fp:
+        fp.write(dedent('''\
+            [run]
+            branch = True
+            source = crossenv
+            data_file = {}
+            '''.format(coverage_file)))
+
+    # Enable it
+    venv_python.setenv('COVERAGE_PROCESS_START', coverage_config.resolve())
+
 @pytest.fixture(scope='session')
-def build_python(python_version):
+def build_python(request, python_version, tmp_path_factory):
     build_python_tag = 'build-python:{}'.format(python_version)
     try:
-        return Resource(build_python_tag)
+        base = Resource(build_python_tag)
     except KeyError:
         pytest.skip('No build-python version {} available'.format(
             python_version))
     except FileNotFoundError:
         pytest.skip('Build-python version {} registerd, but not found on '
                 'disk'.format(python_version))
+
+    # Make a virtualenv for build-python. This is not necessary for the tests,
+    # but it lets us install coverage and other support packages so we can
+    # measure code coverage while we are creating the environment
+    python = base.binary
+    venv = tmp_path_factory.mktemp('build-venv')
+    base.check_call([python, '-m', 'venv', venv])
+
+    venv_python = base.derive()
+    venv_python.path = venv
+    venv_python.binary = venv / 'bin' / 'python'
+    if request.config.getoption('--coverage'):
+        setup_coverage(venv_python)
+    return venv_python
 
 @pytest.fixture(scope='session')
 def host_python(architecture, python_version):

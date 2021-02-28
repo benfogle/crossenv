@@ -16,7 +16,7 @@ steps:
         sudo apt update
         sudo apt install -y qemu-user git-lfs
         python -m pip install --upgrade pip
-        pip install pytest wheel
+        pip install pytest wheel coverage
       displayName: Install dependencies
 
     - script: |
@@ -32,7 +32,7 @@ steps:
         displayName: Cross compile Python master branch
 
     - script: |
-        pytest --junit-xml=test-results.xml
+        pytest --junit-xml=test-results.xml --coverage
       displayName: Run tests
 
     - task: PublishTestResults@2
@@ -40,6 +40,18 @@ steps:
       inputs:
           testResultsFiles: '**/test-*.xml'
           testRunTitle: 'Publish test results'
+
+    - script: |
+        coverage xml
+        coverage html
+      condition: succeededOrFailed()
+      displayName: Collect code coverage
+
+    - task: PublishCodeCoverageResults@1
+      condition: succeededOrFailed()
+      inputs:
+          summaryFileLocation: coverage.xml
+          reportDirectory: htmlcov
 schedules:
     - cron: "0 12 * * 0"
       displayName: "Weekly build"

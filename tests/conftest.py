@@ -13,6 +13,10 @@ from . import testutils
 from .resources import host_python, build_python, architecture, \
         python_version, get_resource
 
+def pytest_addoption(parser):
+    parser.addoption('--coverage', action='store_true',
+            help='Enable code coverage for crossenv')
+
 def pytest_configure(config):
     # Make sure we use pathlib Paths, not pytest Paths
     cache_dir = Path(str(config.cache.makedir('prebuilt')))
