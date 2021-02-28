@@ -36,6 +36,7 @@ class ExecEnvironment:
 
         if value is None:
             return value
+        value = str(value)
         return string.Template(value).substitute(EnvDict(self.environ))
 
     def setenv(self, name, value):

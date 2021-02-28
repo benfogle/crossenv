@@ -1,7 +1,7 @@
 Virtual Environments for Cross-Compiling Python Extension Modules
 =============================================================================
 
-|build status| |test status|
+|build status| |test status| |coverage status|
 
 Documentation is available online at https://crossenv.readthedocs.io and in the
 ``docs`` directory.
@@ -177,3 +177,4 @@ Known Limitations
 
 .. |build status| image:: https://dev.azure.com/benfogle/crossenv/_apis/build/status/benfogle.crossenv?branchName=master
 .. |test status| image:: https://img.shields.io/azure-devops/tests/benfogle/crossenv/1/master
+.. |coverage status| image:: https://img.shields.io/azure-devops/coverage/benfogle/crossenv/1/master
