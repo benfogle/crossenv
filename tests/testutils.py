@@ -106,9 +106,14 @@ class CrossenvEnvironment(ExecEnvironment):
         self.build_bindir = crossenv_dir / 'build/bin'
         self.build_site_packages = site
 
-        site = sorted(crossenv_dir.glob('cross/lib/python*/site-packages'))[0]
-        self.cross_bindir = crossenv_dir / 'cross/bin'
-        self.cross_site_packages = site
+        sites = crossenv_dir.glob('cross/lib/python*/site-packages')
+        sites = sorted(sites)
+        if sites:
+            self.cross_site_packages = sites[0]
+            self.cross_bindir = crossenv_dir / 'cross/bin'
+        else:
+            self.cross_site_packages = None
+            self.cross_bindir = None
 
         # Mimic some of what crossenv_dir/bin/activate would do
         self.setenv('PATH', '{}:{}:$PATH'.format(self.bindir,
