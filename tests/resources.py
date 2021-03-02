@@ -26,6 +26,11 @@ ARCHITECTURES = [
         system='Linux',
         machine='arm',
     ),
+    Architecture(
+        name='x86_64-linux-gnu',
+        system='Linux',
+        machine='x86_64',
+    ),
 ]
 
 PY_VERSIONS = [
@@ -50,6 +55,10 @@ PREBUILT_RESOURCES = {
             'PATH': '$SOURCE/prebuilt_musl_arm_aarch64/musl-toolchain/bin:$PATH',
         },
     },
+    'host-python:3.8.1:x86_64-linux-gnu': {
+        'source': 'prebuilt_musl_arm_aarch64.tar.xz',
+        'binary': 'prebuilt_musl_arm_aarch64/python/3.8.1/build/bin/python3',
+    },
     'host-python:3.8.1:aarch64-linux-musl': {
         'source': 'prebuilt_musl_arm_aarch64.tar.xz',
         'binary': 'prebuilt_musl_arm_aarch64/python/3.8.1/aarch64/bin/python3',
@@ -71,6 +80,10 @@ PREBUILT_RESOURCES = {
             'PATH': '$SOURCE/prebuilt_musl_arm_aarch64/musl-toolchain/bin:$PATH',
         },
     },
+    'host-python:3.9.0:x86_64-linux-gnu': {
+        'source': 'prebuilt_python3.9.0.tar.xz',
+        'binary': 'prebuilt_python3.9.0/build/bin/python3',
+    },
     'host-python:3.9.0:aarch64-linux-musl': {
         'source': 'prebuilt_python3.9.0.tar.xz',
         'binary': 'prebuilt_python3.9.0/aarch64/bin/python3',
@@ -90,6 +103,13 @@ PREBUILT_RESOURCES = {
     # sure it's actually present. See prebuilt/src/CMakeLists.txt for help.
     # The master build is diabled by default anyway.
     'build-python:master': {
+        'source': 'python/master/build',
+        'binary': 'bin/python3',
+        'env': {
+            'PATH': '$EXTRACTED/prebuilt_musl_arm_aarch64/musl-toolchain/bin:$PATH',
+        },
+    },
+    'host-python:master:x86_64-linux-gnu': {
         'source': 'python/master/build',
         'binary': 'bin/python3',
         'env': {
