@@ -2,6 +2,8 @@ import os
 import hashlib
 import subprocess
 import string
+import fcntl
+from contextlib import contextmanager
 
 def hash_file(path):
     ctx = hashlib.sha256()
@@ -132,3 +134,22 @@ def make_crossenv(crossenv_dir, host_python, build_python, *args, **kwargs):
         assert False, "Could not make crossenv!"
     return CrossenvEnvironment(build_python, crossenv_dir,
             creation_log=result.stdout)
+
+@contextmanager
+def open_lock_file(path):
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o660)
+    with open(fd, 'r+') as fp:
+        fcntl.flock(fp, fcntl.LOCK_EX)
+        try:
+            data = fp.read(64)
+            if data:
+                try:
+                    yield int(data)
+                    return
+                except ValueError:
+                    fp.truncate(0)
+            yield None
+            fp.write(str(os.getpid()))
+        finally:
+            fp.flush()
+            fcntl.flock(fp, fcntl.LOCK_UN)

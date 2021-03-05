@@ -11,7 +11,7 @@ from collections import namedtuple
 
 import pytest
 
-from .testutils import ExecEnvironment, hash_file
+from .testutils import ExecEnvironment, hash_file, open_lock_file
 
 Architecture = namedtuple('Architecture', 'name system machine')
 
@@ -197,10 +197,19 @@ class PrebuiltBlobs:
 
         path = self.cache_dir / self.extract_base
 
+        # we might have multiple runners via xdist, so lock
+        # this
+        lockfile = self.cache_dir / '.extracted.lock'
+        with open_lock_file(lockfile) as lockpid:
+            if lockpid is None:
+                self._extract_all(path, archives)
+        return path
+
+    def _extract_all(self, path, archives):
         # Our caching check isn't real smart: if the directory exists,
         # then we'll assume everything is okay.
         if path.is_dir():
-            return path
+            return
 
         path.mkdir(parents=True, exist_ok=False)
         try:
@@ -209,7 +218,6 @@ class PrebuiltBlobs:
         except:
             shutil.rmtree(path)
             raise
-        return path
 
 prebuilt_blobs = PrebuiltBlobs(PREBUILT_RESOURCES)
 
