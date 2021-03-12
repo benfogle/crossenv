@@ -459,6 +459,10 @@ class CrossEnvBuilder(venv.EnvBuilder):
         elif len(host_info) == 1:
             sysname = host_info[0]
             machine = platform.machine()
+        elif host_info[-1] == "powerpc64le":
+            # On uname.machine=ppc64le, _PYTHON_HOST_PLATFORM is linux-powerpc64le
+            sysname = host_info[0]
+            machine = "ppc64le"
         else:
             sysname = host_info[0]
             machine = host_info[-1]
