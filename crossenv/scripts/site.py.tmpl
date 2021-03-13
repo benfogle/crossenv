@@ -9,12 +9,12 @@
 import sys
 import posix
 _sentinel = posix.environ.get(b'PYTHON_CROSSENV')
-if _sentinel != b"%(context.sentinel)d":
+if _sentinel != b"{{context.sentinel}}":
     print("*******************************************************")
     print("* Crossenv has leaked into another Python interpreter!")
     print("* You should probably file a bug report.")
-    print("* Version %%s" %% sys.version)
-    print("* Executable %%s" %% sys.executable)
+    print("* Version %s" % sys.version)
+    print("* Executable %s" % sys.executable)
     print("*******************************************************")
 
 import os
@@ -47,7 +47,7 @@ import sysconfig
 # Fixup paths so we can import packages installed on the build
 # system correctly.
 sys.cross_compiling = 'crossenv'
-sys.build_path = %(context.build_sys_path)r
+sys.build_path = {{repr(context.build_sys_path)}}
 
 abiflags = sysconfig.get_config_var('ABIFLAGS')
 if abiflags is None:
@@ -101,7 +101,7 @@ from configparser import ConfigParser
 from collections import namedtuple
 from functools import wraps
 config = ConfigParser()
-config.read(%(context.crossenv_cfg)r)
+config.read({{repr(context.crossenv_cfg)}})
 
 # Fixup sys:
 # sysconfig should be correct, but some little parts of
@@ -163,7 +163,7 @@ platform.libc_ver = libc_ver
 @wraps(platform.mac_ver)
 def mac_ver(release='', versioninfo=('', '', ''), machine=''):
     if release == '':
-        release = %(macosx_deployment_target)r
+        release = {{repr(macosx_deployment_target)}}
     if machine == '':
         machine = uname_result.machine
     return release, versioninfo, machine
@@ -193,7 +193,7 @@ for name in ('_PYTHON_PROJECT_BASE', '_PYTHON_HOST_PLATFORM',
 # just whether or not setuptools thinks they are installed.
 try:
     import pkg_resources
-    _EXPOSED_LIBS = os.path.realpath(%(context.exposed_libs)r)
+    _EXPOSED_LIBS = os.path.realpath({{repr(context.exposed_libs)}})
     _ALLOWED = set()
     try:
         with open(_EXPOSED_LIBS, 'r') as fp:

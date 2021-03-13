@@ -655,22 +655,27 @@ class CrossEnvBuilder(venv.EnvBuilder):
             else:
                 extra_envs.append(('CPATH', ':=', inc))
 
-        utils.install_script('pywrapper.py.tmpl', context.cross_env_exe, locals())
+        # Put a few things in locals to make templating marginally less gross
+        macosx_deployment_target = self.macosx_deployment_target
+        host_sysconfigdata = self.host_sysconfigdata
+ 
+        # Install patches to environment
+        tmpl = utils.TemplateContext()
+        tmpl.update(locals())
+        utils.install_script('pywrapper.py.tmpl', context.cross_env_exe, tmpl)
+        utils.install_script('site.py.tmpl',
+                os.path.join(context.lib_path, 'site.py'),
+                tmpl)
+        utils.install_script('_manylinux.py.tmpl',
+                os.path.join(context.cross_site_lib_path, '_manylinux.py'),
+                tmpl)
+        self.copy_and_patch_sysconfigdata(context)
 
+        # Symlink alternate names to our wrapper
         for exe in ('python', 'python3'):
             exe = os.path.join(context.cross_bin_path, exe)
             if not os.path.exists(exe):
                 utils.symlink(context.python_exe, exe)
-
-        macosx_deployment_target = self.macosx_deployment_target
-        # Install patches to environment
-        utils.install_script('site.py.tmpl',
-                os.path.join(context.lib_path, 'site.py'),
-                locals())
-        utils.install_script('_manylinux.py.tmpl',
-                os.path.join(context.cross_site_lib_path, '_manylinux.py'),
-                locals())
-        self.copy_and_patch_sysconfigdata(context)
 
         # cross-python is ready. We will use build-pip to install cross-pip
         # because 'python -m ensurepip' is likely to get confused and think
@@ -743,9 +748,11 @@ class CrossEnvBuilder(venv.EnvBuilder):
         Extra processing. Put scripts/binaries in the right place.
         """
 
+        tmpl = utils.TemplateContext()
+        tmpl.update(locals())
         utils.install_script('cross-expose.py.tmpl',
                 os.path.join(context.bin_path, 'cross-expose'),
-                locals())
+                tmpl)
 
         # Don't trust these to be symlinks. A symlink to Python will mess up
         # the virtualenv.
