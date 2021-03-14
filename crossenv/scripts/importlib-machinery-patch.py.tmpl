@@ -1,0 +1,27 @@
+_original_find_spec = PathFinder.find_spec
+
+# well after the bootstrap process, and before we've patched, so it's safe to
+# import normally here
+import sysconfig
+import sys
+
+@classmethod
+def _PathFinder_find_spec(cls, fullname, path=None, target=None):
+    """Monkey patch to PathFinder.find_spec that silently inserts
+    sys.build_path just prior to the stdlib. We do this so that
+    pip/setuptools/etc don't consider packages installed for build-python when
+    deciding what to download and build. We need to be careful to allow
+    prepending to sys.path to take priority for pip's isolated build
+    environments."""
+
+    if path is None:
+        stdlib = sysconfig.get_path('stdlib')
+        path = list(sys.path)
+        try:
+            i = path.index(stdlib)
+            path[i:i] = sys.build_path
+        except ValueError:
+            pass
+
+    return _original_find_spec(fullname, path, target)
+PathFinder.find_spec = _PathFinder_find_spec

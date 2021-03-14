@@ -146,6 +146,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
         self.find_host_python(host_python)
         self.find_compiler_info()
+        self.get_uname_info()
 
         super().__init__(
                 system_site_packages=False,
@@ -315,16 +316,17 @@ class CrossEnvBuilder(venv.EnvBuilder):
         if not os.path.exists(self.host_makefile):
             raise FileNotFoundError("Cannot find Makefile")
 
-        self.host_platform = sys.platform # Default: not actually cross compiling
+        # Default: not actually cross compiling
+        self.host_platform = sysconfig.get_platform() 
         with open(self.host_makefile, 'r') as fp:
             lines = list(fp.readlines())
 
         for line in lines:
             line = line.strip()
             if line.startswith('_PYTHON_HOST_PLATFORM='):
-                host_platform = line.split('=',1)[-1]
+                host_platform = line.split('=',1)[-1].strip()
                 if host_platform:
-                    self.host_platform = line.split('=',1)[-1]
+                    self.host_platform = host_platform
                 break
 
         self.macosx_deployment_target = ''
@@ -409,7 +411,6 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
         env_dir = os.path.abspath(env_dir)
         context = self.ensure_directories(env_dir)
-        self.create_configuration(context)
         self.make_build_python(context)
         self.make_cross_python(context)
         self.post_setup(context)
@@ -443,31 +444,29 @@ class CrossEnvBuilder(venv.EnvBuilder):
         utils.mkdir_if_needed(context.lib_path)
         return context
 
-    def create_configuration(self, context):
+    def get_uname_info(self):
         """
-        Create configuration files. We don't have a pyvenv.cfg file in the
-        base directory, but we do have a uname crossenv.cfg file.
+        What should uname() return?
         """
 
-        # Do our best to guess defaults
-        config = ConfigParser()
         # host_platform is _probably_ something like linux-x86_64, but it can
         # vary.
         host_info = self.host_platform.split('-')
         if not host_info:
-            sysname = sys.platform
+            self.host_sysname = sys.platform
+            self.host_machine = platform.machine()
         elif len(host_info) == 1:
-            sysname = host_info[0]
-            machine = platform.machine()
+            self.host_sysname = host_info[0]
+            self.host_machine = platform.machine()
         elif host_info[-1] == "powerpc64le":
             # On uname.machine=ppc64le, _PYTHON_HOST_PLATFORM is linux-powerpc64le
-            sysname = host_info[0]
-            machine = "ppc64le"
+            self.host_sysname = host_info[0]
+            self.host_machine = "ppc64le"
         else:
-            sysname = host_info[0]
-            machine = host_info[-1]
+            self.host_sysname = host_info[0]
+            self.host_machine = host_info[-1]
 
-        release = ''
+        self.host_release = ''
         if self.macosx_deployment_target:
             try:
                 major, minor = self.macosx_deployment_target.split(".")
@@ -476,24 +475,12 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 raise ValueError("Unexpected value %s for MACOSX_DEPLOYMENT_TARGET" %
                         self.macosx_deployment_target)
             if major == 10:
-                release = "%s.0.0" % (minor + 4)
+                self.host_release = "%s.0.0" % (minor + 4)
             elif major == 11:
-                release = "%s.0.0" % (minor + 20)
+                self.host_release = "%s.0.0" % (minor + 20)
             else:
                 raise ValueError("Unexpected major version %s for MACOSX_DEPLOYMENT_TARGET" %
                         major)
-
-        config['uname'] = {
-            'sysname' : sysname.title(),
-            'nodename' : 'build',
-            'release' : release,
-            'version' : '',
-            'machine' : machine,
-        }
-
-        context.crossenv_cfg = os.path.join(context.env_dir, 'crossenv.cfg')
-        with utils.overwrite_file(context.crossenv_cfg) as fp:
-            config.write(fp)
 
     def make_build_python(self, context):
         """
@@ -614,9 +601,6 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
         # Note that env_exe hasn't actually been created yet.
 
-        sysconfig_name = os.path.basename(self.host_sysconfigdata_file)
-        sysconfig_name, _ = os.path.splitext(sysconfig_name)
-
         # If this venv is generated from a cross-python still in its
         # build directory, rather than installed, then our modifications
         # prevent build-python from finding its pure-Python libs, which
@@ -658,18 +642,38 @@ class CrossEnvBuilder(venv.EnvBuilder):
         # Put a few things in locals to make templating marginally less gross
         macosx_deployment_target = self.macosx_deployment_target
         host_sysconfigdata = self.host_sysconfigdata
+        host_build_time_vars = self.host_sysconfigdata.build_time_vars
+        sysconfig_name = self.host_sysconfigdata_name
+
  
         # Install patches to environment
+        self.copy_and_patch_sysconfigdata(context)
+
         tmpl = utils.TemplateContext()
         tmpl.update(locals())
+
         utils.install_script('pywrapper.py.tmpl', context.cross_env_exe, tmpl)
-        utils.install_script('site.py.tmpl',
-                os.path.join(context.lib_path, 'site.py'),
-                tmpl)
+
+        # Everything in lib_path follows the same pattern
+        site_scripts = [
+            'site.py',
+            'sys-patch.py',
+            'os-patch.py',
+            'importlib-machinery-patch.py',
+            'platform-patch.py',
+            'sysconfig-patch.py',
+            'distutils-sysconfig-patch.py',
+            'pkg_resources-patch.py',
+        ]
+
+        for script in site_scripts:
+            src = script + '.tmpl'
+            dst = os.path.join(context.lib_path, script)
+            utils.install_script(src, dst, tmpl)
+
         utils.install_script('_manylinux.py.tmpl',
                 os.path.join(context.cross_site_lib_path, '_manylinux.py'),
                 tmpl)
-        self.copy_and_patch_sysconfigdata(context)
 
         # Symlink alternate names to our wrapper
         for exe in ('python', 'python3'):
@@ -701,8 +705,8 @@ class CrossEnvBuilder(venv.EnvBuilder):
         sysconfig_name = os.path.basename(self.host_sysconfigdata_file)
         # we always write a .py, but we might be reading from a .pyc
         # (i.e., from buildroot).
-        sysconfig_name = os.path.splitext(sysconfig_name)[0] + '.py'
-        cross_sysconfig = os.path.join(context.lib_path, sysconfig_name)
+        sysconfig_name = self.host_sysconfigdata_name + '.py'
+        context.cross_sysconfig = os.path.join(context.lib_path, sysconfig_name)
 
         # Patch all instances of CC, etc. We'll do a global search and
         # replace
@@ -737,7 +741,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
         cross_sysconfig_data['build_time_vars'] = build_time_vars
 
-        with open(cross_sysconfig, 'w') as fp:
+        with open(context.cross_sysconfig, 'w') as fp:
             fp.write("# generated from %s\n" % self.host_sysconfigdata_file)
             for key, value in cross_sysconfig_data.items():
                 fp.write("%s = " % key)

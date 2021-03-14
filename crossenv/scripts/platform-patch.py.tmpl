@@ -1,0 +1,29 @@
+from collections import namedtuple
+
+platform_uname_result_type = namedtuple('uname_result',
+                    'system node release version machine processor')
+_uname_result = platform_uname_result_type(
+        {{repr(self.host_sysname.title())}},
+        'build',
+        {{repr(self.host_release)}},
+        '',
+        {{repr(self.host_machine)}},
+        {{repr(self.host_machine)}})
+def uname():
+    return _uname_result
+
+def libc_ver(*args, **kwargs):
+    return ('', '')
+
+def mac_ver(release='', versioninfo=('', '', ''), machine=''):
+    if release == '':
+        release = {{repr(macosx_deployment_target)}}
+    if machine == '':
+        machine = uname_result.machine
+    return release, versioninfo, machine
+
+# Old, deprecated functions, but we support back to 3.5
+if '_linux_distribution' in globals():
+    def _linux_distribution(distname, version, id, supported_dists,
+            full_distribution_name):
+        return ('', '', '')

@@ -1,0 +1,23 @@
+# Patch the things that depend on os.environ or sys
+# This is very similar to the sysconfig patch
+
+project_base = {{repr(self.host_project_base)}}
+
+def get_makefile_filename():
+    return {{repr(self.host_makefile)}}
+
+__real_init_posix = _init_posix
+def _init_posix():
+    old = os.environ.get('_PYTHON_SYSCONFIGDATA_NAME')
+    os.environ['_PYTHON_SYSCONFIGDATA_NAME'] = {{repr(sysconfig_name)}}
+    try:
+        return __real_init_posix()
+    finally:
+        if old is None:
+            del os.environ['_PYTHON_SYSCONFIGDATA_NAME']
+        else:
+            os.environ['_PYTHON_SYSCONFIGDATA_NAME'] = old
+
+assert _config_vars is None, "sysconfig was set up prior to patching?"
+
+#vi: ft=python

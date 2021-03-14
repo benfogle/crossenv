@@ -1,0 +1,14 @@
+cross_compiling = True
+build_path = {{repr(context.build_sys_path)}}
+
+abiflags = {{repr(host_build_time_vars.get('ABIFLAGS'))}}
+if abiflags is None:
+    del abiflags
+
+implementation._multiarch = {{repr(host_build_time_vars.get('MULTIARCH'))}}
+if implementation._multiarch is None:
+    del implementation._multiarch
+
+# Remove cross-python from sys.path. It's not needed after startup.
+path.remove({{repr(context.lib_path)}})
+path.remove({{repr(stdlib)}})

@@ -1,0 +1,15 @@
+# Patch the things that depend on os.environ
+_PROJECT_BASE = {{repr(self.host_project_base)}}
+
+_PYTHON_BUILD = is_python_build(True) # re-eval after patching
+
+def get_makefile_filename():
+    return {{repr(self.host_makefile)}}
+
+def _get_sysconfigdata_name():
+    return {{repr(sysconfig_name)}}
+
+def get_platform():
+    return {{repr(self.host_platform)}}
+
+assert _CONFIG_VARS is None, "sysconfig was set up prior to patching?"
