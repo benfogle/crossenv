@@ -36,3 +36,4 @@ This tool currently only supports Linux build machines.
 
    intro
    quickstart
+   environment
