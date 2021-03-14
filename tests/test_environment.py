@@ -1,4 +1,5 @@
 import os
+import re
 from textwrap import dedent
 
 from .testutils import make_crossenv
@@ -80,3 +81,21 @@ def test_environment_leak(crossenv):
             ''')],
             universal_newlines=True)
     assert 'Crossenv has leaked' not in out
+
+def test_run_sysconfig_module(crossenv):
+    # a regression test that 'python -m sysconfig' works as well as 'import
+    # sysconfig'
+    out = crossenv.check_output(['python', '-m', 'sysconfig'],
+            universal_newlines=True)
+    
+    m = re.search(r'^\s*DESTDIRS = "(.*)"$', out, re.M)
+    assert m is not None
+    destdirs_cmdline = m.group(1)
+
+    out = crossenv.check_output(['python', '-c', dedent('''\
+            import sysconfig
+            print(sysconfig.get_config_var('DESTDIRS'))
+            ''')],
+            universal_newlines=True)
+    out = out.strip()
+    assert destdirs_cmdline == out

@@ -67,6 +67,12 @@ class CrossenvPatchLoader(importlib.abc.Loader):
         self.original.exec_module(module)
         _patch_module(module, self.patch)
 
+    # runpy module expects a source loader, should we try to run 'python -m
+    # sysconfig'. This has extra methods, so we'll keep it happy with whatever
+    # it wants.
+    def __getattr__(self, name):
+        return getattr(self.original, name)
+
 class CrossenvFinder(importlib.abc.MetaPathFinder):
     """Mucks with import machinery in two ways:
     
