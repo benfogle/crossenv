@@ -9,227 +9,136 @@
 import sys
 import posix
 _sentinel = posix.environ.get(b'PYTHON_CROSSENV')
-if _sentinel != b"%(context.sentinel)d":
+if _sentinel != b"{{context.sentinel}}":
     print("*******************************************************")
     print("* Crossenv has leaked into another Python interpreter!")
     print("* You should probably file a bug report.")
-    print("* Version %%s" %% sys.version)
-    print("* Executable %%s" %% sys.executable)
+    print("* Version %s" % sys.version)
+    print("* Executable %s" % sys.executable)
     print("*******************************************************")
 
 import os
 import importlib.machinery
+import importlib.abc
+import importlib.util
 
 os.environ['PYTHON_CROSSENV'] = 'x'
 
 # To prevent the above scenario from playing out every time run a script that
 # starts with #!/usr/bin/python, we need to remove the environment variables so
-# subprocesses won't see them.  Unfortunately, we still need them after
-# startup. Our solution is to force the C environment and os.environ to
-# diverge. This can still break in some situations where subprocess.Popen is
-# called with env=..., but the solution to that is to monkey patch subprocess.
-# We'll try not to do that unless we really have to.
+# subprocesses won't see them.
 for name in ['_PYTHON_PROJECT_BASE', '_PYTHON_HOST_PLATFORM',
              '_PYTHON_SYSCONFIGDATA_NAME', 'PYTHONHOME', 'PYTHONPATH']:
+    prev = '_OLD_' + name
     try:
-        # Using os.putenv causes the environments to diverge
-        os.putenv(name, os.environ['_OLD_' + name])
-        del os.environ['_OLD_' + name]
+        os.environ[name] = os.environ[prev]
     except KeyError:
-        os.unsetenv(name)
+        os.environ.pop(name, None)
+    os.environ.pop(prev, None)
 
+# Very little is imported right now, which gives us a chance to patch most
+# things on import. A custom meta path finder will both patch things up and
+# focibly load sysconfigdata from where we want it.  We also need to import
+# preferentially from build-python, but we do that as a monkey patch to
+# importlib.machinery so that we can properly interact with sys.path.
+#
+# This is more flexible than manually implementing our patches here.
+# Additionally, we need to patch something in distutils, but importing it in
+# order to patch will subsequently cause setuptools to complain.
 
-# sysconfig isn't _quite_ set up right, because it queries from a not-yet fixed
-# sys module. The variables that come from build_time_vars are correct, so
-# we can safely use those. We'll re-import it later once sys is fixed.
-import sysconfig
+def _patch_module(module, patch):
+    # add our patch as if it had been typed just after
+    # explicit encoding, because we know that utf-8 has been loaded already.
+    # The default causes an import to happen too early.
+    with open(patch, 'r', encoding='utf-8') as fp:
+        src = fp.read()
+    exec(src, module.__dict__, module.__dict__)
+    module.__patched__ = True
 
-# Fixup paths so we can import packages installed on the build
-# system correctly.
-sys.cross_compiling = 'crossenv'
-sys.build_path = %(context.build_sys_path)r
+class CrossenvPatchLoader(importlib.abc.Loader):
+    def __init__(self, original, patch):
+        self.original = original
+        self.patch = patch
 
-abiflags = sysconfig.get_config_var('ABIFLAGS')
-if abiflags is None:
-    try:
-        del sys.abiflags
-    except AttributeError:
-        pass
-else:
-    sys.abiflags = abiflags
+    def create_module(self, spec):
+        return self.original.create_module(spec)
 
-stdlib = os.path.normpath(sysconfig.get_path('stdlib'))
+    def exec_module(self, module):
+        self.original.exec_module(module)
+        _patch_module(module, self.patch)
 
-class BuildPathFinder(importlib.machinery.PathFinder):
-    """This class exists because we want to hide our modifications to
-    sys.path so that pip/setuptools/etc. don't find build-python
-    packages when deciding what to install."""
-    @classmethod
-    def find_spec(cls, fullname, path=None, target=None):
-        if path is None:
-            # Need to do this every time in case sys.path changes.
-            # We insert build paths just before the host stdlibs
-            path = []
-            for i, p in enumerate(sys.path):
-                if p.startswith(stdlib):
-                    path.extend(sys.build_path)
-                    path.extend(sys.path[i:])
-                    break
-                else:
-                    path.append(p)
-        return super().find_spec(fullname, path, target)
+    # runpy module expects a source loader, should we try to run 'python -m
+    # sysconfig'. This has extra methods, so we'll keep it happy with whatever
+    # it wants.
+    def __getattr__(self, name):
+        return getattr(self.original, name)
 
-# Insert just before the regular sys.path handler
-for i, meta in enumerate(sys.meta_path):
-    if meta is importlib.machinery.PathFinder:
-        sys.meta_path[i] = BuildPathFinder
-        break
-else:
-    sys.meta_path.append(BuildPathFinder) #???
+class CrossenvFinder(importlib.abc.MetaPathFinder):
+    """Mucks with import machinery in two ways:
+    
+    1) loads sysconfigdata from our hard-coded path, regardless of sys.path
+    2) intercepts and patches modules as they are loaded
+    """
 
-# Remove this directory. It's not needed after startup.
-# The one after will be one of ours too.
-cross_dir = os.path.dirname(__file__)
-for index, p in enumerate(sys.path):
-    if os.path.exists(p) and os.path.samefile(p, cross_dir):
-        del sys.path[index:index+2]
-        break
+    PATCHES = {
+        'sysconfig': '{{context.lib_path}}/sysconfig-patch.py',
+        'distutils.sysconfig': '{{context.lib_path}}/distutils-sysconfig-patch.py',
+        'platform': '{{context.lib_path}}/platform-patch.py',
+        'pkg_resources': '{{context.lib_path}}/pkg_resources-patch.py',
+        'pip._vendor.pkg_resources': '{{context.lib_path}}/pkg_resources-patch.py',
+    }
 
+    def find_spec(self, fullname, path, target=None):
+        spec = self._find_sysconfigdata(fullname, path, target)
+        if spec:
+            return spec
 
-# A this point we can import more things
-from configparser import ConfigParser
-from collections import namedtuple
-from functools import wraps
-config = ConfigParser()
-config.read(%(context.crossenv_cfg)r)
+        return self._patch_spec(fullname, path, target)
 
-# Fixup sys:
-# sysconfig should be correct, but some little parts of
-# sys are hardcoded (but changable)
-multiarch = sysconfig.get_config_var('MULTIARCH')
-if multiarch is None:
-    try:
-        del sys.implementation._multiarch
-    except AttributeError:
-        pass
-else:
-    sys.implementation._multiarch = multiarch
+    def _find_sysconfigdata(self, fullname, path, target):
+        if fullname == {{repr(sysconfig_name)}}:
+            return importlib.util.spec_from_file_location(
+                    fullname, {{repr(context.cross_sysconfig)}})
+        else:
+            return None
 
-# Fixup os.uname, which should fix most of platform module
-uname_result_type = namedtuple('uname_result',
-        'sysname nodename release version machine')
-uname_result = uname_result_type(
-        config.get('uname', 'sysname', fallback=''),
-        config.get('uname', 'nodename', fallback=''),
-        config.get('uname', 'release', fallback=''),
-        config.get('uname', 'version', fallback=''),
-        config.get('uname', 'machine', fallback=''))
+    def _patch_spec(self, fullname, path, target):
+        """If necessary, set up to patch a module"""
+        if fullname not in self.PATCHES:
+            return None
 
-@wraps(os.uname)
-def uname():
-    return uname_result
-os.uname = uname
+        # query the next finders to see who really would have loaded it
+        try:
+            start = sys.meta_path.index(self) + 1
+        except ValueError:
+            return None
 
-# Fixup platform
-import platform
-processor = config.get('uname', 'processor', fallback=None)
-if processor is None:
-    processor = config.get('uname', 'machine', fallback='')
-platform_uname_result_type = namedtuple('uname_result',
-                    'system node release version machine processor')
-uname_result2 = platform_uname_result_type(
-        config.get('uname', 'sysname', fallback=''),
-        config.get('uname', 'nodename', fallback=''),
-        config.get('uname', 'release', fallback=''),
-        config.get('uname', 'version', fallback=''),
-        config.get('uname', 'machine', fallback=''),
-        processor)
-@wraps(platform.uname)
-def uname2():
-    return uname_result2
-platform.uname = uname2
+        for finder in sys.meta_path[start:]:
+            spec = finder.find_spec(fullname, path, target)
+            if spec is not None:
+                break
+        else:
+            return None
 
-if hasattr(platform, '_linux_distribution'):
-    @wraps(platform._linux_distribution)
-    def dist(*args, **kwargs):
-        return ('', '', '')
-    platform._linux_distribution = dist
+        patch = self.PATCHES[fullname]
+        spec.loader = CrossenvPatchLoader(spec.loader, patch)
+        return spec
 
-@wraps(platform.libc_ver)
-def libc_ver(*args, **kwargs):
-    return ('', '')
-platform.libc_ver = libc_ver
-
-@wraps(platform.mac_ver)
-def mac_ver(release='', versioninfo=('', '', ''), machine=''):
-    if release == '':
-        release = %(macosx_deployment_target)r
-    if machine == '':
-        machine = uname_result.machine
-    return release, versioninfo, machine
-platform.mac_ver = mac_ver
-
-# importlib.reload would probably work, but just to be safe we'll try to 
-# have the modules' __dict__ completely clean.
-del sys.modules['site']
-del sys.modules['sysconfig']
-import site
-import sysconfig
-import distutils.sysconfig
-sysconfig.get_config_vars() # Force init
-distutils.sysconfig.get_config_vars() # Force init
-
-# Now that sysconfig is set up, remove a few environment variables completely.
-# If someone (setuptools!) calls subprocess.Popen with env=os.environ.copy(),
-# it will break subprocesses because 'python3 -I', as in the wrapper script,
-# doesn't prevent these from being used.
-for name in ('_PYTHON_PROJECT_BASE', '_PYTHON_HOST_PLATFORM',
-        '_PYTHON_SYSCONFIGDATA_NAME'):
-    if name in os.environ:
-        del os.environ[name]
-
-# Now modify sys.path in a way that we can selectivly let setuptools know
-# about packages in build-python. This won't change how things are imported:
-# just whether or not setuptools thinks they are installed.
+# add just before the real path finder
 try:
-    import pkg_resources
-    _EXPOSED_LIBS = os.path.realpath(%(context.exposed_libs)r)
-    _ALLOWED = set()
-    try:
-        with open(_EXPOSED_LIBS, 'r') as fp:
-            for line in fp:
-                allow = line.split('#',1)[0].strip()
-                if allow:
-                    _ALLOWED.add(allow)
-    except IOError:
-        pass
+    _index = sys.meta_path.index(importlib.machinery.PathFinder)
+except ValueError:
+    _index = 0
+sys.meta_path.insert(_index, CrossenvFinder())
 
-    class BuildPathEntryFinder:
-        def __init__(self, path):
-            if os.path.realpath(path) != _EXPOSED_LIBS:
-                raise ImportError()
+# Fixup sys, os, etc. We can't safely re-import them, because they're already
+# being used in many places, so we'll manually apply the patch. Do importlib.machinery
+# first so that our imports work for the others.
+_patch_module(importlib.machinery, '{{context.lib_path}}/importlib-machinery-patch.py')
+_patch_module(sys, '{{context.lib_path}}/sys-patch.py')
+_patch_module(os, '{{context.lib_path}}/os-patch.py')
 
-        def invalidate_caches(cls):
-            pass
-
-        def find_module(self, fullname):
-            return None
-
-        def find_loader(self, fullname):
-            return None, []
-
-        def find_spec(self, fullname, target=None):
-            return None
-
-    def find_on_build_path(importer, path_item, only=False):
-        for path in sys.build_path:
-            for dist in pkg_resources.find_on_path(importer, path, only):
-                if dist.project_name in _ALLOWED:
-                    yield dist
-
-    sys.path_hooks.append(BuildPathEntryFinder)
-    sys.path.append(_EXPOSED_LIBS)
-    pkg_resources.register_finder(BuildPathEntryFinder, find_on_build_path)
-    pkg_resources.working_set.add_entry(_EXPOSED_LIBS)
-except ImportError:
-    pass
+# Re-import the real site module, so Python can continue booting. Crossenv is
+# ready!
+del sys.modules['site']
+import site

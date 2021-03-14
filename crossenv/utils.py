@@ -4,6 +4,7 @@ import shutil
 import os
 from textwrap import dedent
 import pkgutil
+import re
 
 # We're using %-style formatting everywhere because it's more convenient for
 # building Python and Bourne Shell source code. We'll build some helpers to
@@ -25,6 +26,25 @@ def F(s, values):
     values = FormatMapping(values)
     return s % values
 
+class TemplateContext:
+    def __init__(self):
+        self.locals = {}
+        self.globals = {
+            '__builtins__': __builtins__,
+        }
+
+    def update(self, other):
+        self.locals.update(other)
+
+    def update_globals(self, other):
+        self.globals.update(other)
+
+    def expand(self, template):
+        return re.sub(r'\{\{(.*?)\}\}', self._replace, template)
+
+    def _replace(self, match):
+        expr = match.group(1)
+        return str(eval(expr, self.locals, self.globals))
 
 @contextlib.contextmanager
 def overwrite_file(name, mode='w', perms=None):
@@ -95,10 +115,11 @@ def fixup_shebang(src):
     return preamble + src[end:]
 
 
-def install_script(name, dst, values, perms=0o755):
+def install_script(name, dst, context=None, perms=0o755):
     srcname = os.path.join('scripts', name)
     src = pkgutil.get_data(__package__, srcname)
-    src = F(src.decode(), values)
+    if context is not None:
+        src = context.expand(src.decode())
     src = fixup_shebang(src)
     mkdir_if_needed(os.path.dirname(dst))
 

@@ -1,0 +1,14 @@
+from collections import namedtuple
+
+# Fixup os.uname, which should fix most of platform module
+uname_result_type = namedtuple('uname_result',
+        'sysname nodename release version machine')
+_uname_result = uname_result_type(
+        {{repr(self.host_sysname.title())}},
+        'build',
+        {{repr(self.host_release)}},
+        '',
+        {{repr(self.host_machine)}})
+
+def uname():
+    return _uname_result

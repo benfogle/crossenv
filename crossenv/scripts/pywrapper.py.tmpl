@@ -1,10 +1,10 @@
-#!%(context.build_env_exe)s -I
+#!{{context.build_env_exe}} -I
 
 import os
 import sys
 
 
-os.environ['PYTHON_CROSSENV'] = "%(context.sentinel)d"
+os.environ['PYTHON_CROSSENV'] = "{{context.sentinel}}"
 
 for name in ['_PYTHON_PROJECT_BASE', '_PYTHON_HOST_PLATFORM',
         '_PYTHON_SYSCONFIGDATA_NAME', 'PYTHONHOME', 'PYTHONPATH']:
@@ -12,12 +12,12 @@ for name in ['_PYTHON_PROJECT_BASE', '_PYTHON_HOST_PLATFORM',
     if old not in os.environ and name in os.environ:
         os.environ[old] = os.environ[name]
 
-os.environ['_PYTHON_PROJECT_BASE']=%(self.host_project_base)r
-os.environ['_PYTHON_HOST_PLATFORM']=%(self.host_platform)r
-os.environ['_PYTHON_SYSCONFIGDATA_NAME']=%(sysconfig_name)r
-os.environ['PYTHONHOME']=%(self.host_home)r
+os.environ['_PYTHON_PROJECT_BASE']={{repr(self.host_project_base)}}
+os.environ['_PYTHON_HOST_PLATFORM']={{repr(self.host_platform)}}
+os.environ['_PYTHON_SYSCONFIGDATA_NAME']={{repr(sysconfig_name)}}
+os.environ['PYTHONHOME']={{repr(self.host_home)}}
 oldpath = os.environ.get('PYTHONPATH')
-newpath = os.pathsep.join([%(context.lib_path)r, %(stdlib)r])
+newpath = os.pathsep.join([{{repr(context.lib_path)}}, {{repr(stdlib)}}])
 if oldpath:
     path = os.pathsep.join([newpath, oldpath])
 else:
@@ -25,7 +25,7 @@ else:
 
 os.environ['PYTHONPATH'] = path
 
-extra_envs = %(extra_envs)r
+extra_envs = {{repr(extra_envs)}}
 for name, assign, value in extra_envs:
     if assign == '=':
         os.environ[name] = value
@@ -40,4 +40,4 @@ for name, assign, value in extra_envs:
             os.environ[name] = value
 
 # This will fix up argv0 so that sys.executable will be correct
-os.execv(%(context.build_env_exe)r, sys.argv)
+os.execv({{repr(context.build_env_exe)}}, sys.argv)

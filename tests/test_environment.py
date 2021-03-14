@@ -1,4 +1,5 @@
 import os
+import re
 from textwrap import dedent
 
 from .testutils import make_crossenv
@@ -64,3 +65,37 @@ def test_very_long_paths(tmp_path_factory, host_python, build_python):
     assert len(str(dirname)) >= 256
     crossenv = make_crossenv(dirname, host_python, build_python)
     crossenv.check_call(['python', '--version'])
+
+def test_environment_leak(crossenv):
+    # a regression test that used to cause scary warnings during build
+    # processes. Triggered with subprocess.Popen with explicit environ
+    out = crossenv.check_output(['python', '-c', dedent('''\
+            import subprocess
+            import sys
+            import os
+
+            env = os.environ.copy()
+            python = sys.executable
+            result = subprocess.run([python, '-c', 'print("ok")'], env=env)
+            sys.exit(result.returncode)
+            ''')],
+            universal_newlines=True)
+    assert 'Crossenv has leaked' not in out
+
+def test_run_sysconfig_module(crossenv):
+    # a regression test that 'python -m sysconfig' works as well as 'import
+    # sysconfig'
+    out = crossenv.check_output(['python', '-m', 'sysconfig'],
+            universal_newlines=True)
+    
+    m = re.search(r'^\s*DESTDIRS = "(.*)"$', out, re.M)
+    assert m is not None
+    destdirs_cmdline = m.group(1)
+
+    out = crossenv.check_output(['python', '-c', dedent('''\
+            import sysconfig
+            print(sysconfig.get_config_var('DESTDIRS'))
+            ''')],
+            universal_newlines=True)
+    out = out.strip()
+    assert destdirs_cmdline == out
