@@ -64,3 +64,19 @@ def test_very_long_paths(tmp_path_factory, host_python, build_python):
     assert len(str(dirname)) >= 256
     crossenv = make_crossenv(dirname, host_python, build_python)
     crossenv.check_call(['python', '--version'])
+
+def test_environment_leak(crossenv):
+    # a regression test that used to cause scary warnings during build
+    # processes. Triggered with subprocess.Popen with explicit environ
+    out = crossenv.check_output(['python', '-c', dedent('''\
+            import subprocess
+            import sys
+            import os
+
+            env = os.environ.copy()
+            python = sys.executable
+            result = subprocess.run([python, '-c', 'print("ok")'], env=env)
+            sys.exit(result.returncode)
+            ''')],
+            universal_newlines=True)
+    assert 'Crossenv has leaked' not in out
