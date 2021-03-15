@@ -99,3 +99,25 @@ def test_run_sysconfig_module(crossenv):
             universal_newlines=True)
     out = out.strip()
     assert destdirs_cmdline == out
+
+def test_cross_expose(crossenv):
+    out = crossenv.check_output(['pip', 'freeze'])
+    assert b'colorama' not in out
+
+    crossenv.check_call(['build-pip', 'install', 'colorama'])
+    out = crossenv.check_output(['pip', 'freeze'])
+    assert b'colorama' not in out
+
+    crossenv.check_call(['cross-expose', 'colorama'])
+    out = crossenv.check_output(['pip', 'freeze'])
+    assert b'colorama' in out
+
+    out = crossenv.check_output(['cross-expose', '--list'])
+    assert b'colorama' in out
+
+    crossenv.check_call(['cross-expose', '-u', 'colorama'])
+    out = crossenv.check_output(['pip', 'freeze'])
+    assert b'colorama' not in out
+
+    out = crossenv.check_output(['cross-expose', '--list'])
+    assert b'colorama' not in out
