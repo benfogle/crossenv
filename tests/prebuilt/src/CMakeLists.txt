@@ -379,6 +379,7 @@ foreach(index RANGE ${num_versions})
         INSTALL_DIR         ${CMAKE_INSTALL_PREFIX}/python/${pyversion}/build
         DOWNLOAD_DIR        python-download
         SOURCE_DIR          python-source-${pyversion}
+        BINARY_DIR          ${CMAKE_INSTALL_PREFIX}/python-obj/${pyversion}/build
         ${download}
         CONFIGURE_COMMAND   <SOURCE_DIR>/configure
                                 --prefix=<INSTALL_DIR>
@@ -408,6 +409,7 @@ foreach(index RANGE ${num_versions})
         INSTALL_DIR         ${CMAKE_INSTALL_PREFIX}/python/${pyversion}/aarch64
         DOWNLOAD_COMMAND    ""
         SOURCE_DIR          python-source-${pyversion}
+        BINARY_DIR          ${CMAKE_INSTALL_PREFIX}/python-obj/${pyversion}/aarch64
         CONFIGURE_COMMAND   ${CMAKE_COMMAND} -E env PATH=${BUILD_PYTHON_PATH}
                             <SOURCE_DIR>/configure
                                 --prefix=<INSTALL_DIR>
@@ -443,6 +445,7 @@ foreach(index RANGE ${num_versions})
         INSTALL_DIR         ${CMAKE_INSTALL_PREFIX}/python/${pyversion}/armhf
         DOWNLOAD_COMMAND    ""
         SOURCE_DIR          python-source-${pyversion}
+        BINARY_DIR          ${CMAKE_INSTALL_PREFIX}/python-obj/${pyversion}/armhf
         CONFIGURE_COMMAND   ${CMAKE_COMMAND} -E env PATH=${BUILD_PYTHON_PATH}
                             <SOURCE_DIR>/configure
                                 --prefix=<INSTALL_DIR>
