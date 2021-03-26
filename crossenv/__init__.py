@@ -632,12 +632,12 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 logger.warning("No libs in sysroot. Does it exist?")
             else:
                 libs = os.pathsep.join(libs)
-                extra_envs.append(('LIBRARY_PATH', ':=', libs))
+                extra_envs.insert(0, ('LIBRARY_PATH', ':=', libs))
 
             if not os.path.isdir(inc):
                 logger.warning("No include/ in sysroot. Does it exist?")
             else:
-                extra_envs.append(('CPATH', ':=', inc))
+                extra_envs.insert(0, ('CPATH', ':=', inc))
 
         # Put a few things in locals to make templating marginally less gross
         macosx_deployment_target = self.macosx_deployment_target
