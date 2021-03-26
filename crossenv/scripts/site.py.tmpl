@@ -81,12 +81,21 @@ class CrossenvFinder(importlib.abc.MetaPathFinder):
     """
 
     PATCHES = {
+        'importlib.machinery': '{{context.lib_path}}/importlib-machinery-patch.py',
+        'sys': '{{context.lib_path}}/sys-patch.py',
+        'os': '{{context.lib_path}}/os-patch.py',
         'sysconfig': '{{context.lib_path}}/sysconfig-patch.py',
         'distutils.sysconfig': '{{context.lib_path}}/distutils-sysconfig-patch.py',
         'platform': '{{context.lib_path}}/platform-patch.py',
         'pkg_resources': '{{context.lib_path}}/pkg_resources-patch.py',
         'pip._vendor.pkg_resources': '{{context.lib_path}}/pkg_resources-patch.py',
     }
+
+    def __init__(self):
+        # At startup, manually patch things that have already been loaded.  We
+        # can't re-load them because they might be used in many places already.
+        # This will be importlib.machinery, sys, and os at the very least.
+        self.manually_patch_loaded()
 
     def find_spec(self, fullname, path, target=None):
         spec = self._find_sysconfigdata(fullname, path, target)
@@ -124,6 +133,18 @@ class CrossenvFinder(importlib.abc.MetaPathFinder):
         spec.loader = CrossenvPatchLoader(spec.loader, patch)
         return spec
 
+    def manually_patch_loaded(self):
+        # do this one first so import machinery works for any subsequent
+        # patches
+        import importlib.machinery
+        _patch_module(importlib.machinery, self.PATCHES['importlib.machinery'])
+
+        for name, module in sys.modules.items():
+            if name == 'importlib.machinery':
+                continue
+            if name in self.PATCHES:
+                _patch_module(module, self.PATCHES[name])
+
 # add just before the real path finder
 try:
     _index = sys.meta_path.index(importlib.machinery.PathFinder)
@@ -131,14 +152,9 @@ except ValueError:
     _index = 0
 sys.meta_path.insert(_index, CrossenvFinder())
 
-# Fixup sys, os, etc. We can't safely re-import them, because they're already
-# being used in many places, so we'll manually apply the patch. Do importlib.machinery
-# first so that our imports work for the others.
-_patch_module(importlib.machinery, '{{context.lib_path}}/importlib-machinery-patch.py')
-_patch_module(sys, '{{context.lib_path}}/sys-patch.py')
-_patch_module(os, '{{context.lib_path}}/os-patch.py')
-
 # Re-import the real site module, so Python can continue booting. Crossenv is
-# ready!
+# ready! We do want to remove sysconfig or any other module that relies on
+# patching after site has messed with sys.
 del sys.modules['site']
+sys.modules.pop('sysconfig', None)
 import site
