@@ -11,7 +11,7 @@ from . import testutils
 # Fixtures for everyone. Make sure to include fixture-of-fixture
 # dependencies...
 from .resources import host_python, build_python, architecture, \
-        python_version, get_resource
+        python_version, get_resource, crossenv_setup
 
 def pytest_addoption(parser):
     parser.addoption('--coverage', action='store_true',

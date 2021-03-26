@@ -14,6 +14,8 @@ import pytest
 from .testutils import ExecEnvironment, hash_file, open_lock_file
 
 Architecture = namedtuple('Architecture', 'name system machine')
+TestSetup = namedtuple('TestSetup',
+        'name architecture version host_python_tag build_python_tag')
 
 ARCHITECTURES = [
     Architecture(
@@ -130,6 +132,39 @@ PREBUILT_RESOURCES = {
             'QEMU_LD_PREFIX': '$EXTRACTED/prebuilt_musl_arm_aarch64/musl-toolchain/arm-linux-musleabihf',
         }
     },
+    # All the same, but from a build directory.
+    'build-python:master:obj': {
+        'source': 'python-obj/master/build',
+        'binary': 'python',
+        'env': {
+            'PATH': '$EXTRACTED/prebuilt_musl_arm_aarch64/musl-toolchain/bin:$PATH',
+        },
+    },
+    'host-python:master:x86_64-linux-gnu:obj': {
+        'source': 'python-obj/master/build',
+        'binary': 'python',
+        'env': {
+            'PATH': '$EXTRACTED/prebuilt_musl_arm_aarch64/musl-toolchain/bin:$PATH',
+        },
+    },
+    'host-python:master:aarch64-linux-musl:obj': {
+        'source': 'python-obj/master/aarch64',
+        'binary': 'python',
+        'env': {
+            'QEMU_LD_PREFIX': '$EXTRACTED/prebuilt_musl_arm_aarch64/musl-toolchain/aarch64-linux-musl',
+            'LD_LIBRARY_PATH': '$SOURCE',
+        },
+    },
+    'host-python:master:arm-linux-musleabihf:obj': {
+        'source': 'python-obj/master/armhf',
+        'binary': 'python',
+        'env': {
+            'QEMU_LD_PREFIX': '$EXTRACTED/prebuilt_musl_arm_aarch64/musl-toolchain/arm-linux-musleabihf',
+            'LD_LIBRARY_PATH': '$SOURCE',
+        }
+    },
+
+    # finally, source files
     'hello-module:source': {
         'source': 'hello',
     },
@@ -271,14 +306,57 @@ class Resource(ExecEnvironment):
     def __repr__(self):
         return '<Resource {}>'.format(self.binary or self.path)
 
+def collect_test_setups():
+    # build_installed and host_installed, below, are causing us to hit some
+    # issues with CI runners as the number of variants explodes. We'll leave
+    # them disabled except for local tests, pending a later fix.
+    if os.environ.get('CROSSENV_TEST_INPLACE'):
+        installed = (True, False)
+    else:
+        installed = (True,)
 
-@pytest.fixture(params=ARCHITECTURES, scope='session', ids=lambda a: a.name)
-def architecture(request):
+    setups = []
+    for version in PY_VERSIONS:
+        for arch in ARCHITECTURES:
+            for build_installed in installed:
+                parts = ['build-python', version]
+                if not build_installed:
+                    parts.append('obj')
+                build_python_tag = ':'.join(parts)
+                if not Resource.exists(build_python_tag):
+                    continue
+
+                #for host_installed in (True, False):
+                for host_installed in installed:
+                    parts = ['host-python', version, arch.name]
+
+                    if not host_installed:
+                        parts.append('obj')
+                    host_python_tag = ':'.join(parts)
+
+                    if not Resource.exists(host_python_tag):
+                        continue
+
+                    build_installed = 'installed' if build_installed else 'inplace'
+                    host_installed = 'installed' if host_installed else 'inplace'
+
+                    name = ':'.join([arch.name, version, build_installed,
+                        host_installed])
+                    setups.append(TestSetup(name, arch, version,
+                        host_python_tag, build_python_tag))
+    return setups
+
+@pytest.fixture(params=collect_test_setups(), scope='session', ids=lambda s: s.name)
+def crossenv_setup(request):
     return request.param
 
-@pytest.fixture(params=PY_VERSIONS, scope='session')
-def python_version(request):
-    return request.param
+@pytest.fixture(scope='session')
+def architecture(crossenv_setup):
+    return crossenv_setup.architecture
+
+@pytest.fixture(scope='session')
+def python_version(crossenv_setup):
+    return crossenv_setup.version
 
 def setup_coverage(venv_python):
     """Get code coverage, if requested. This is tricker than normal, because
@@ -313,16 +391,16 @@ def setup_coverage(venv_python):
     venv_python.setenv('COVERAGE_PROCESS_START', coverage_config.resolve())
 
 @pytest.fixture(scope='session')
-def build_python(request, python_version, tmp_path_factory):
-    build_python_tag = 'build-python:{}'.format(python_version)
+def build_python(request, crossenv_setup, tmp_path_factory):
+    build_python_tag = crossenv_setup.build_python_tag
     try:
         base = Resource(build_python_tag)
     except KeyError:
         pytest.skip('No build-python version {} available'.format(
-            python_version))
+            crossenv_setup.version))
     except FileNotFoundError:
         pytest.skip('Build-python version {} registerd, but not found on '
-                'disk'.format(python_version))
+                'disk'.format(crossenv_setup.version))
 
     # Make a virtualenv for build-python. This is not necessary for the tests,
     # but it lets us install coverage and other support packages so we can
@@ -339,16 +417,16 @@ def build_python(request, python_version, tmp_path_factory):
     return venv_python
 
 @pytest.fixture(scope='session')
-def host_python(architecture, python_version):
-    host_python_tag = 'host-python:{}:{}'.format(python_version, architecture.name)
+def host_python(crossenv_setup):
+    host_python_tag = crossenv_setup.host_python_tag
     try:
         return Resource(host_python_tag)
     except KeyError:
         pytest.skip('No Python version {} available for {}'.format(
-            python_version, architecture.name))
+            crossenv_setup.version, crossenv_setup.architecture.name))
     except FileNotFoundError:
         pytest.skip('Python version {} for {} registerd, but not found on '
-                'disk'.format(python_version, architecture.name))
+            'disk'.format(crossenv_setup.version, crossenv_setup.architecture.name))
 
 
 @pytest.fixture(scope='session')
