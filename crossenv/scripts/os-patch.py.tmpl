@@ -12,3 +12,20 @@ _uname_result = uname_result_type(
 
 def uname():
     return _uname_result
+
+# pip, packaging, and subprocess all use confstr to get the libc version. We do
+# not want the host's glibc version to show up, as this affects things like
+# manylinux determination. Always return something of the form "name version",
+# or pip will fall back to querying ctypes, which I am not brave enough to
+# patch. Subprocess will likely end up using less efficient implementations,
+# but functionality shouldn't be affected.
+_original_confstr = confstr
+def confstr(name):
+    if name == 'CS_GLIBC_LIB_VERSION':
+        version = {{repr(self.effective_glibc)}}
+        if version is None:
+            return 'unknown 0.0'
+        else:
+            return 'glibc_{}_{}'.format(*version)
+    else:
+        return _original_confstr(name)

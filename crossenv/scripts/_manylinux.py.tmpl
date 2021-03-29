@@ -1,8 +1,15 @@
 # Unconditionally disable manylinux support in a cross environment
 
-def manylinux_compatible(tag_major, tag_minor, tag_arch):
-    return False
+_tags = {{repr(self.manylinux_tags)}}
 
-manylinux1_compatible = False
-manylinux2010_compatible = False
-manylinux2014_compatible = False
+def manylinux_compatible(tag_major, tag_minor, tag_arch):
+    import platform
+    if tag_arch != platform.machine():
+        return False
+
+    tag = 'manylinux_%s_%s' % (tag_major, tag_minor)
+    return tag in _tags
+
+manylinux1_compatible = {{'manylinux1' in self.manylinux_tags}}
+manylinux2010_compatible = {{'manylinux2010' in self.manylinux_tags}}
+manylinux2014_compatible = {{'manylinux2014' in self.manylinux_tags}}
