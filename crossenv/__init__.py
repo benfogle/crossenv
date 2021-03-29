@@ -101,6 +101,8 @@ class CrossEnvBuilder(venv.EnvBuilder):
                                      If not given, all sysconfigdata files will
                                      be searched and will error if there are
                                      multiple files that have different values.
+    :param manylinux_tags:  Manylinux tags that are acceptable when downloading
+                            from PyPI.
     """
     def __init__(self, *,
             host_python,
@@ -116,7 +118,8 @@ class CrossEnvBuilder(venv.EnvBuilder):
             host_ar=None,
             host_relativize=False,
             host_config_vars=(),
-            host_sysconfigdata_file=None):
+            host_sysconfigdata_file=None,
+            manylinux_tags=()):
         self.host_sysroot = host_sysroot
         self.host_cc = None
         self.host_cxx = None
@@ -143,10 +146,12 @@ class CrossEnvBuilder(venv.EnvBuilder):
         else:
             self.cross_prefix = None
             self.clear_cross = clear in ('default', 'cross', 'both')
+        self.manylinux_tags = manylinux_tags
 
         self.find_host_python(host_python)
         self.find_compiler_info()
         self.get_uname_info()
+        self.expand_manylinux_tags()
 
         super().__init__(
                 system_site_packages=False,
@@ -481,6 +486,53 @@ class CrossEnvBuilder(venv.EnvBuilder):
             else:
                 raise ValueError("Unexpected major version %s for MACOSX_DEPLOYMENT_TARGET" %
                         major)
+
+    def expand_manylinux_tags(self):
+        """
+        Convert legacy manylinux tags to PEP600, because pip only looks for one
+        or the other
+        """
+
+        manylinux_tags = set(self.manylinux_tags)
+        extra_tags = set()
+        effective_glibc = None
+
+        # we'll be very strict here: don't assume that manylinux2014 implies
+        # manylinux1 and so on.
+        if 'manylinux1' in manylinux_tags:
+            extra_tags.add('manylinux_2_5')
+            effective_glibc = (2, 5)
+        if 'manylinux2010' in manylinux_tags:
+            extra_tags.add('manylinux_2_12')
+            effective_glibc = (2, 12)
+        if 'manylinux2014' in manylinux_tags:
+            extra_tags.add('manylinux_2_17')
+            effective_glibc = (2, 17)
+        if 'manylinux_2_5' in manylinux_tags:
+            extra_tags.add('manylinux1')
+        if 'manylinux_2_12' in manylinux_tags:
+            extra_tags.add('manylinux2010')
+        if 'manylinux_2_17' in manylinux_tags:
+            extra_tags.add('manylinux2014')
+
+        manylinux_tags.update(extra_tags)
+        self.manylinux_tags = manylinux_tags
+
+        for tag in manylinux_tags:
+            # I know *I* mistype it alot.
+            if not re.search(r'manylinux', tag):
+                logger.warning("Tag %r does not contain 'manylinux'")
+
+            m = re.match(r'manylinux_(\d+)_(\d+)', tag)
+            if not m:
+                continue
+            glibc = (int(m.group(1)), int(m.group(2)))
+            if effective_glibc is None or glibc > effective_glibc:
+                effective_glibc = glibc
+
+
+        self.effective_glibc = effective_glibc
+
 
     def make_build_python(self, context):
         """
@@ -915,6 +967,10 @@ def main():
                 will error if there are multiple files that have different
                 values. This option is a workaround for specifically
                 conda python where multiple sysconfigdata files exist.""")
+    parser.add_argument('--manylinux', action='append', default=[],
+        help="""Declare compatibility with the given manylinux platform tag to
+                enable pre-compiled wheels. This argument may be given multiple
+                times.""")
     parser.add_argument('-v', '--verbose', action='count', default=0,
         help="""Verbose mode. May be specified multiple times to increase
                 verbosity.""")
@@ -957,6 +1013,7 @@ def main():
                 host_relativize=args.relative_toolchain,
                 host_config_vars = config_vars,
                 host_sysconfigdata_file=args.sysconfigdata_file,
+                manylinux_tags=args.manylinux,
                 )
         for env_dir in args.ENV_DIR:
             builder.create(env_dir)
