@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.1.1] - 2020-03-28
+
+### Added
+- `--manylinux` option to opt-in to manylinux wheels, for those that actually
+  wanted them.
+
+### Fixed
+- Pip shebang line was broken due to incorrectly importing site module.
+- `LIBRARY_PATH` and `CPATH` environment variable can be overriden.
+
 ## [1.1.0] - 2020-03-14
 
 ### Added
