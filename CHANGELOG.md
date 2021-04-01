@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- Correctly handle the case where host-python was natively built on another
+  architecture.
+
 ## [1.1.1] - 2020-03-28
 
 ### Added
