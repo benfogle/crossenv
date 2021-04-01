@@ -316,6 +316,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 self.host_ar[0] = os.path.basename(self.host_ar[0])
 
         self.host_version = self.host_sysconfigdata.build_time_vars['VERSION']
+        self.host_gnu_type = self.host_sysconfigdata.build_time_vars['HOST_GNU_TYPE']
 
         # Ask the makefile a few questions too
         if not os.path.exists(self.host_makefile):
@@ -335,8 +336,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
         if self.host_platform is None:
             # It was probably natively compiled, but not necessarily for this
             # architecture. Guess from HOST_GNU_TYPE.
-            host = self.host_sysconfigdata.build_time_vars['HOST_GNU_TYPE']
-            host = host.split('-')
+            host = self.host_gnu_type.split('-')
             if len(host) == 4: # i.e., aarch64-unknown-linux-gnu
                 self.host_platform = '-'.join([host[2], host[0]])
             elif len(host) == 3: # i.e., aarch64-linux-gnu, unlikely.
@@ -470,17 +470,15 @@ class CrossEnvBuilder(venv.EnvBuilder):
         host_info = self.host_platform.split('-')
         if not host_info:
             self.host_sysname = sys.platform
-            self.host_machine = platform.machine()
-        elif len(host_info) == 1:
+        elif len(host_info) >= 1:
             self.host_sysname = host_info[0]
-            self.host_machine = platform.machine()
-        elif host_info[-1] == "powerpc64le":
+
+        if len(host_info) > 1 and host_info[-1] == "powerpc64le":
+            # Test that this is still a special case when we can.
             # On uname.machine=ppc64le, _PYTHON_HOST_PLATFORM is linux-powerpc64le
-            self.host_sysname = host_info[0]
             self.host_machine = "ppc64le"
         else:
-            self.host_sysname = host_info[0]
-            self.host_machine = host_info[-1]
+            self.host_machine = self.host_gnu_type.split('-')[0]
 
         self.host_release = ''
         if self.macosx_deployment_target:
