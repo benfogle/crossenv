@@ -321,11 +321,9 @@ class CrossEnvBuilder(venv.EnvBuilder):
         if not os.path.exists(self.host_makefile):
             raise FileNotFoundError("Cannot find Makefile")
 
-        # Default: not actually cross compiling
-        self.host_platform = sysconfig.get_platform() 
+        self.host_platform = None
         with open(self.host_makefile, 'r') as fp:
             lines = list(fp.readlines())
-
         for line in lines:
             line = line.strip()
             if line.startswith('_PYTHON_HOST_PLATFORM='):
@@ -333,6 +331,19 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 if host_platform:
                     self.host_platform = host_platform
                 break
+
+        if self.host_platform is None:
+            # It was probably natively compiled, but not necessarily for this
+            # architecture. Guess from HOST_GNU_TYPE.
+            host = self.host_sysconfigdata.build_time_vars['HOST_GNU_TYPE']
+            host = host.split('-')
+            if len(host) == 4: # i.e., aarch64-unknown-linux-gnu
+                self.host_platform = '-'.join([host[2], host[0]])
+            elif len(host) == 3: # i.e., aarch64-linux-gnu, unlikely.
+                self.host_platform = '-'.join([host[1], host[0]])
+            else:
+                logger.warning("Cannot determine platform. Using build.")
+                self.host_platform = sysconfig.get_platform()
 
         self.macosx_deployment_target = ''
         for line in lines:
@@ -786,6 +797,13 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 value = find_cc.sub(repl_cc, value)
 
             build_time_vars[key] = value
+
+        # Handle the case where host-python was natively compiled on another
+        # architecture. This is only needed because someone (me) thought it was
+        # a good idea to compare BUILD_GNU_TYPE to HOST_GNU_TYPE to detect
+        # cross compiling.
+        build_time_vars['BUILD_GNU_TYPE'] = \
+                sysconfig.get_config_var('BUILD_GNU_TYPE')
 
         # Overrides from --config_var options
         for key, value in self.host_config_vars.items():
