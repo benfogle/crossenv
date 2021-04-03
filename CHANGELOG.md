@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [1.1.2]- 2020-04-03
 
 ### Fixed
 - Correctly handle the case where host-python was natively built on another

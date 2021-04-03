@@ -19,7 +19,7 @@ import re
 from .utils import F
 from . import utils
 
-__version__ = '1.1.1'
+__version__ = '1.1.2'
 
 logger = logging.getLogger(__name__)
 
