@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- Correctly handle the case where host-python was natively built on another
+  architecture.
+- Get uname machine info from `HOST_GNU_TYPE` instead of the platform name. The
+  latter usually uses a generic name that can cause trouble when naming wheels.
+
 ## [1.1.1] - 2020-03-28
 
 ### Added
