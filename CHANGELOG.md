@@ -1,6 +1,11 @@
 # Changelog
 
-## [1.1.2]- 2020-04-03
+## [1.1.3]- 2021-08-21
+
+### Fixed
+- Correctly set up crossenv environment with Python 3.10
+
+## [1.1.2]- 2021-04-03
 
 ### Fixed
 - Correctly handle the case where host-python was natively built on another
@@ -8,7 +13,7 @@
 - Get uname machine info from `HOST_GNU_TYPE` instead of the platform name. The
   latter usually uses a generic name that can cause trouble when naming wheels.
 
-## [1.1.1] - 2020-03-28
+## [1.1.1] - 2021-03-28
 
 ### Added
 - `--manylinux` option to opt-in to manylinux wheels, for those that actually
@@ -18,7 +23,7 @@
 - Pip shebang line was broken due to incorrectly importing site module.
 - `LIBRARY_PATH` and `CPATH` environment variable can be overriden.
 
-## [1.1.0] - 2020-03-14
+## [1.1.0] - 2021-03-14
 
 ### Added
 - A changelog :)
