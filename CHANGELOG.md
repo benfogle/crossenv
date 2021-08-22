@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- Fixed CI build due to master -> main branch switch in CPython.
+
 ## [1.1.3]- 2021-08-21
 
 ### Fixed

@@ -21,7 +21,7 @@ set(TOOLCHAIN_ROOT "" CACHE PATH
 set(PYTHON_VERSIONS
     3.8.1
     3.9.0
-    master
+    main
     )
 set(PYTHON_URLS
     https://www.python.org/ftp/python/3.8.1/Python-3.8.1.tar.xz
@@ -31,7 +31,7 @@ set(PYTHON_URLS
 set(PYTHON_HASHES
     MD5=b3fb85fd479c0bf950c626ef80cacb57
     MD5=6ebfe157f6e88d9eabfbaf3fa92129f6
-    origin/master
+    origin/main
     )
 
 add_custom_target(all-build-python)
@@ -361,8 +361,8 @@ foreach(index RANGE ${num_versions})
     list(GET PYTHON_URLS ${index} pyurl)
     list(GET PYTHON_HASHES ${index} pyhash)
 
-    # special case master version
-    if (pyversion STREQUAL "master")
+    # special case main version
+    if (pyversion STREQUAL "main")
         set(download
             GIT_REPOSITORY      ${pyurl}
             GIT_TAG             ${pyhash}

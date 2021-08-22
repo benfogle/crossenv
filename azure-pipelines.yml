@@ -1,6 +1,6 @@
 parameters:
-    - name: enable_python_master
-      displayName: Test against Python master branch
+    - name: enable_python_main
+      displayName: Test against Python main branch
       type: boolean
       default: false
 
@@ -25,11 +25,11 @@ steps:
 
     # This step is usually disabled. We only do this for our weekly builds, or
     # if it was specifically requested in a commit message
-    - ${{ if or(eq(parameters.enable_python_master, true), eq(variables['Build.Reason'], 'Schedule')) }}:
+    - ${{ if or(eq(parameters.enable_python_main, true), eq(variables['Build.Reason'], 'Schedule')) }}:
       - script: |
           tar xf tests/prebuilt/prebuilt_musl_arm_aarch64.tar.xz
-          ./tests/prebuilt/make_master.sh $PWD/prebuilt_musl_arm_aarch64/musl-toolchain
-        displayName: Cross compile Python master branch
+          ./tests/prebuilt/make_main.sh $PWD/prebuilt_musl_arm_aarch64/musl-toolchain
+        displayName: Cross compile Python main branch
 
     - script: |
         pytest -n auto --junit-xml=test-results.xml --coverage

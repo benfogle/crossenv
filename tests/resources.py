@@ -38,7 +38,7 @@ ARCHITECTURES = [
 PY_VERSIONS = [
     '3.8.1',
     '3.9.0',
-    'master', # not always enabled
+    'main', # not always enabled
 ]
 
 # This structure declares all the prebuilt resources we need. Each tag refers
@@ -100,63 +100,63 @@ PREBUILT_RESOURCES = {
             'QEMU_LD_PREFIX': '$SOURCE/prebuilt_musl_arm_aarch64/musl-toolchain/arm-linux-musleabihf',
         }
     },
-    # master is a bit of an anomaly: we don't pre build it. Instead we just
+    # main is a bit of an anomaly: we don't pre build it. Instead we just
     # expect it to be there, and it's the test driver's responsibility to make
     # sure it's actually present. See prebuilt/src/CMakeLists.txt for help.
-    # The master build is diabled by default anyway.
-    'build-python:master': {
-        'source': 'python/master/build',
+    # The main build is diabled by default anyway.
+    'build-python:main': {
+        'source': 'python/main/build',
         'binary': 'bin/python3',
         'env': {
             'PATH': '$EXTRACTED/prebuilt_musl_arm_aarch64/musl-toolchain/bin:$PATH',
         },
     },
-    'host-python:master:x86_64-linux-gnu': {
-        'source': 'python/master/build',
+    'host-python:main:x86_64-linux-gnu': {
+        'source': 'python/main/build',
         'binary': 'bin/python3',
         'env': {
             'PATH': '$EXTRACTED/prebuilt_musl_arm_aarch64/musl-toolchain/bin:$PATH',
         },
     },
-    'host-python:master:aarch64-linux-musl': {
-        'source': 'python/master/aarch64',
+    'host-python:main:aarch64-linux-musl': {
+        'source': 'python/main/aarch64',
         'binary': 'bin/python3',
         'env': {
             'QEMU_LD_PREFIX': '$EXTRACTED/prebuilt_musl_arm_aarch64/musl-toolchain/aarch64-linux-musl',
         },
     },
-    'host-python:master:arm-linux-musleabihf': {
-        'source': 'python/master/armhf',
+    'host-python:main:arm-linux-musleabihf': {
+        'source': 'python/main/armhf',
         'binary': 'bin/python3',
         'env': {
             'QEMU_LD_PREFIX': '$EXTRACTED/prebuilt_musl_arm_aarch64/musl-toolchain/arm-linux-musleabihf',
         }
     },
     # All the same, but from a build directory.
-    'build-python:master:obj': {
-        'source': 'python-obj/master/build',
+    'build-python:main:obj': {
+        'source': 'python-obj/main/build',
         'binary': 'python',
         'env': {
             'PATH': '$EXTRACTED/prebuilt_musl_arm_aarch64/musl-toolchain/bin:$PATH',
         },
     },
-    'host-python:master:x86_64-linux-gnu:obj': {
-        'source': 'python-obj/master/build',
+    'host-python:main:x86_64-linux-gnu:obj': {
+        'source': 'python-obj/main/build',
         'binary': 'python',
         'env': {
             'PATH': '$EXTRACTED/prebuilt_musl_arm_aarch64/musl-toolchain/bin:$PATH',
         },
     },
-    'host-python:master:aarch64-linux-musl:obj': {
-        'source': 'python-obj/master/aarch64',
+    'host-python:main:aarch64-linux-musl:obj': {
+        'source': 'python-obj/main/aarch64',
         'binary': 'python',
         'env': {
             'QEMU_LD_PREFIX': '$EXTRACTED/prebuilt_musl_arm_aarch64/musl-toolchain/aarch64-linux-musl',
             'LD_LIBRARY_PATH': '$SOURCE',
         },
     },
-    'host-python:master:arm-linux-musleabihf:obj': {
-        'source': 'python-obj/master/armhf',
+    'host-python:main:arm-linux-musleabihf:obj': {
+        'source': 'python-obj/main/armhf',
         'binary': 'python',
         'env': {
             'QEMU_LD_PREFIX': '$EXTRACTED/prebuilt_musl_arm_aarch64/musl-toolchain/arm-linux-musleabihf',
