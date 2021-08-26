@@ -148,3 +148,15 @@ def test_cross_expose(crossenv):
 
     out = crossenv.check_output(['cross-expose', '--list'])
     assert b'colorama' not in out
+
+def test_machine_override(tmp_path, host_python, build_python):
+    crossenv = make_crossenv(tmp_path, host_python, build_python,
+            '--machine=foobar')
+
+    out = crossenv.check_output(['python', '-c', dedent('''\
+            import os, platform
+            print(os.uname().machine, platform.machine())
+            ''')],
+            universal_newlines=True)
+    out = out.strip()
+    assert out == 'foobar foobar'
