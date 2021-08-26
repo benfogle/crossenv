@@ -103,6 +103,8 @@ class CrossEnvBuilder(venv.EnvBuilder):
                                      multiple files that have different values.
     :param manylinux_tags:  Manylinux tags that are acceptable when downloading
                             from PyPI.
+    :param host_machine:    Host machine override seen by cross-python at
+                            runtime. Default is guessed from host-python.
     """
     def __init__(self, *,
             host_python,
@@ -119,7 +121,8 @@ class CrossEnvBuilder(venv.EnvBuilder):
             host_relativize=False,
             host_config_vars=(),
             host_sysconfigdata_file=None,
-            manylinux_tags=()):
+            manylinux_tags=(),
+            host_machine=None):
         self.host_sysroot = host_sysroot
         self.host_cc = None
         self.host_cxx = None
@@ -147,6 +150,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
             self.cross_prefix = None
             self.clear_cross = clear in ('default', 'cross', 'both')
         self.manylinux_tags = manylinux_tags
+        self.host_machine = host_machine
 
         self.find_host_python(host_python)
         self.find_compiler_info()
@@ -473,12 +477,13 @@ class CrossEnvBuilder(venv.EnvBuilder):
         elif len(host_info) >= 1:
             self.host_sysname = host_info[0]
 
-        if len(host_info) > 1 and host_info[-1] == "powerpc64le":
-            # Test that this is still a special case when we can.
-            # On uname.machine=ppc64le, _PYTHON_HOST_PLATFORM is linux-powerpc64le
-            self.host_machine = "ppc64le"
-        else:
-            self.host_machine = self.host_gnu_type.split('-')[0]
+        if self.host_machine is None:
+            if len(host_info) > 1 and host_info[-1] == "powerpc64le":
+                # Test that this is still a special case when we can.
+                # On uname.machine=ppc64le, _PYTHON_HOST_PLATFORM is linux-powerpc64le
+                self.host_machine = "ppc64le"
+            else:
+                self.host_machine = self.host_gnu_type.split('-')[0]
 
         self.host_release = ''
         if self.macosx_deployment_target:
@@ -987,6 +992,9 @@ def main():
         help="""Declare compatibility with the given manylinux platform tag to
                 enable pre-compiled wheels. This argument may be given multiple
                 times.""")
+    parser.add_argument('--machine', action='store',
+        help="""Override the value of os.uname().machine if cross-python is
+                unable to guess correctly.""")
     parser.add_argument('-v', '--verbose', action='count', default=0,
         help="""Verbose mode. May be specified multiple times to increase
                 verbosity.""")
@@ -1030,6 +1038,7 @@ def main():
                 host_config_vars = config_vars,
                 host_sysconfigdata_file=args.sysconfigdata_file,
                 manylinux_tags=args.manylinux,
+                host_machine=args.machine,
                 )
         for env_dir in args.ENV_DIR:
             builder.create(env_dir)
