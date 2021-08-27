@@ -55,6 +55,12 @@ def _patch_module(module, patch):
     exec(src, module.__dict__, module.__dict__)
     module.__patched__ = True
 
+def make_loader(original, patch):
+    if hasattr(original, 'exec_module'):
+        return CrossenvPatchLoader(original, patch)
+    else:
+        return CrossenvPatchLegacyLoader(original, patch)
+
 class CrossenvPatchLoader(importlib.abc.Loader):
     def __init__(self, original, patch):
         self.original = original
@@ -70,6 +76,20 @@ class CrossenvPatchLoader(importlib.abc.Loader):
     # runpy module expects a source loader, should we try to run 'python -m
     # sysconfig'. This has extra methods, so we'll keep it happy with whatever
     # it wants.
+    def __getattr__(self, name):
+        return getattr(self.original, name)
+
+class CrossenvPatchLegacyLoader(importlib.abc.Loader):
+    def __init__(self, original, patch):
+        self.original = original
+        self.patch = patch
+
+    def load_module(self, fullname):
+        module = self.original.load_module(fullname)
+        if not hasattr(module, '__patched__'):
+            _patch_module(module, self.patch)
+        return module
+
     def __getattr__(self, name):
         return getattr(self.original, name)
 
@@ -130,7 +150,7 @@ class CrossenvFinder(importlib.abc.MetaPathFinder):
             return None
 
         patch = self.PATCHES[fullname]
-        spec.loader = CrossenvPatchLoader(spec.loader, patch)
+        spec.loader = make_loader(spec.loader, patch)
         return spec
 
     def manually_patch_loaded(self):
