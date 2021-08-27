@@ -1,8 +1,12 @@
 # Changelog
 
-## [Unreleased]
+## [1.1.4] - 2021-08-27
+
+### Added
+- `--machine` argument to fine-tune apparent value of `os.uname().machine`
 
 ### Fixed
+- Fixed build failure when pip runs from a zip file.
 - Fixed CI build due to master -> main branch switch in CPython.
 
 ## [1.1.3]- 2021-08-21
