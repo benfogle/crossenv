@@ -7,6 +7,8 @@ import os
 import copy
 import zipfile
 
+import pytest
+
 from .testutils import make_crossenv
 
 
@@ -49,7 +51,7 @@ def test_wheel_simple(tmp_path, host_python, build_python, get_resource):
             assert hello.hello() == 'Hello, world'
             ''')])
 
-def test_pip_install_numpy(tmp_path, host_python, build_python):
+def test_pip_install_numpy(tmp_path, host_python, build_python, python_version):
     crossenv = make_crossenv(tmp_path, host_python, build_python)
 
     # Numpy is far too clever, and if it detects that any linear algebra
@@ -59,6 +61,10 @@ def test_pip_install_numpy(tmp_path, host_python, build_python):
     crossenv.setenv('BLAS', 'None')
     crossenv.setenv('LAPACK', 'None')
     crossenv.setenv('ATLAS', 'None')
+
+    if python_version == 'main':
+        # Not sure whose fault this sort of thing is.
+        pytest.xfail("Known broken against master branch")
 
     crossenv.check_call(['cross-pip', '--no-cache-dir', 'install',
         'numpy==1.18.1', 'pytest==5.3.5'])
@@ -81,7 +87,7 @@ def test_pip_install_numpy(tmp_path, host_python, build_python):
 def test_pip_install_bcrypt(tmp_path, host_python, build_python):
     crossenv = make_crossenv(tmp_path, host_python, build_python)
     crossenv.check_call(['build-pip', '--no-cache-dir', 'install', 'cffi'])
-    crossenv.check_call(['cross-pip', '--no-cache-dir', 'install', 'bcrypt'])
+    crossenv.check_call(['cross-pip', '--no-cache-dir', 'install', 'bcrypt~=3.1.0'])
 
     # From the bcrypt test suites
     host_python.setenv('PYTHONPATH',
