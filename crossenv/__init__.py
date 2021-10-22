@@ -369,27 +369,38 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
         def run_compiler(arg):
             cmdline = self.host_cc + [arg]
-            try:
-                return subprocess.check_output(cmdline, universal_newlines=True)
-            except (subprocess.CalledProcessError, FileNotFoundError):
-                return None
+            return subprocess.run(cmdline,
+                                  universal_newlines=True,
+                                  stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE)
 
-        if run_compiler('--version') is None:
-            # I guess we could continue...but why?
+        if not shutil.which(self.host_cc[0]):
             raise RuntimeError(
-                "Cannot run cross-compiler (%r)! Extension modules won't "
+                "Cannot find cross-compiler (%r)! Extension modules won't "
                 "build! Use --cc to correct." % ' '.join(self.host_cc))
+
+        # Check that it runs, but failing this is a warning. Some compilers,
+        # like QNX's qcc, do not have useful arguments we can pass to get a
+        # successful return value.
+        res = run_compiler('--version')
+        if res.returncode != 0:
+            logger.warning(
+                "Test run of %r exited with code %d: %s" % (
+                    self.host_cc, res.returncode, res.stderr))
+            # If it doesn't have --version, it certainly won't have
+            # -print-sysroot or -dumpmachine
             return
 
         # TODO: Clang doesn't have this option
         if self.host_sysroot is None:
-            self.host_sysroot = run_compiler('-print-sysroot')
-            if self.host_sysroot:
-                self.host_sysroot = self.host_sysroot.strip()
+            res = run_compiler('-print-sysroot')
+            if res.returncode == 0:
+                self.host_sysroot = res.stdout.strip()
 
         # Sanity check that this is the right compiler. (See #24, #27.)
-        found_triple = run_compiler('-dumpmachine').strip().strip()
-        if found_triple:
+        res = run_compiler('-dumpmachine')
+        found_triple = res.stdout.strip()
+        if res.returncode == 0 and found_triple:
             expected = self.host_sysconfigdata.build_time_vars['HOST_GNU_TYPE']
             if not self._compare_triples(found_triple, expected):
                 logger.warning("The cross-compiler (%r) does not appear to be "
