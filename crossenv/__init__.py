@@ -322,20 +322,18 @@ class CrossEnvBuilder(venv.EnvBuilder):
         self.host_version = self.host_sysconfigdata.build_time_vars['VERSION']
         self.host_gnu_type = self.host_sysconfigdata.build_time_vars['HOST_GNU_TYPE']
 
-        # Ask the makefile a few questions too
-        if not os.path.exists(self.host_makefile):
-            raise FileNotFoundError("Cannot find Makefile")
-
         self.host_platform = None
-        with open(self.host_makefile, 'r') as fp:
-            lines = list(fp.readlines())
-        for line in lines:
-            line = line.strip()
-            if line.startswith('_PYTHON_HOST_PLATFORM='):
-                host_platform = line.split('=',1)[-1].strip()
-                if host_platform:
-                    self.host_platform = host_platform
-                break
+        # Ask the makefile a few questions too
+        if os.path.exists(self.host_makefile):
+            with open(self.host_makefile, 'r') as fp:
+                lines = list(fp.readlines())
+            for line in lines:
+                line = line.strip()
+                if line.startswith('_PYTHON_HOST_PLATFORM='):
+                    host_platform = line.split('=',1)[-1].strip()
+                    if host_platform:
+                        self.host_platform = host_platform
+                    break
 
         if self.host_platform is None:
             # It was probably natively compiled, but not necessarily for this
