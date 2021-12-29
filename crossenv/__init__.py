@@ -334,6 +334,8 @@ class CrossEnvBuilder(venv.EnvBuilder):
                     if host_platform:
                         self.host_platform = host_platform
                     break
+        else:
+            lines = []
 
         if self.host_platform is None:
             # It was probably natively compiled, but not necessarily for this
