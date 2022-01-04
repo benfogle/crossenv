@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0] - 2022-01-04
+
+### Added
+- Some support for pypy (#82, #85)
+- Crossenv will optimistically continue if it cannot query the compiler. (QNX,
+  etc.)
+
 ## [1.1.4] - 2021-08-27
 
 ### Added
