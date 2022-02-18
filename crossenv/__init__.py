@@ -512,6 +512,12 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 raise ValueError("Unexpected major version %s for MACOSX_DEPLOYMENT_TARGET" %
                         major)
 
+        if self.host_sysname == "darwin":
+            self.sysconfig_platform == "macosx-%s-%s".format(self.macosx_deployment_target,
+                self.host_machine)
+        else:
+            self.sysconfig_platform = self.host_platform
+
     def expand_manylinux_tags(self):
         """
         Convert legacy manylinux tags to PEP600, because pip only looks for one
