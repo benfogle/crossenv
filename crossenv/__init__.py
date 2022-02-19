@@ -515,6 +515,9 @@ class CrossEnvBuilder(venv.EnvBuilder):
         if self.host_sysname == "darwin":
             self.sysconfig_platform = "macosx-%s-%s" % (self.macosx_deployment_target,
                 self.host_machine)
+        elif self.host_sysname == "linux":
+            # Use self.machine here as powerpc64le gets converted to ppc64le in self.machine
+            self.sysconfig_platform = "linux-%s" % (self.machine)
         else:
             self.sysconfig_platform = self.host_platform
 
