@@ -516,8 +516,9 @@ class CrossEnvBuilder(venv.EnvBuilder):
             self.sysconfig_platform = "macosx-%s-%s" % (self.macosx_deployment_target,
                 self.host_machine)
         elif self.host_sysname == "linux":
-            # Use self.machine here as powerpc64le gets converted to ppc64le in self.machine
-            self.sysconfig_platform = "linux-%s" % (self.machine)
+            # Use self.host_machine here as powerpc64le gets converted
+            # to ppc64le in self.host_machine
+            self.sysconfig_platform = "linux-%s" % (self.host_machine)
         else:
             self.sysconfig_platform = self.host_platform
 
