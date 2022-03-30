@@ -22,6 +22,6 @@ if get_config_vars.__module__ == __name__:
             else:
                 os.environ['_PYTHON_SYSCONFIGDATA_NAME'] = old
 
-    assert _config_vars is None, "distutils.sysconfig was set up prior to patching?"
+    assert not _config_vars, "distutils.sysconfig was set up prior to patching?"
 
 #vi: ft=python
