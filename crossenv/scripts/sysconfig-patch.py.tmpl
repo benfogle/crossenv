@@ -14,6 +14,21 @@ def get_makefile_filename():
 def _get_sysconfigdata_name():
     return {{repr(sysconfig_name)}}
 
+# On CPython patching _get_sysconfigdata_name is enough.
+# On PyPy, we need to patch _init_posix, because pypy
+# doesn't use _get_sysconfig_data_name in _init_posix
+__real_init_posix = _init_posix
+def _init_posix(*args, **kwargs):
+    old = os.environ.get('_PYTHON_SYSCONFIGDATA_NAME')
+    os.environ['_PYTHON_SYSCONFIGDATA_NAME'] = {{repr(sysconfig_name)}}
+    try:
+        return __real_init_posix(*args, **kwargs)
+    finally:
+        if old is None:
+            del os.environ['_PYTHON_SYSCONFIGDATA_NAME']
+        else:
+            os.environ['_PYTHON_SYSCONFIGDATA_NAME'] = old
+
 def get_platform():
     return {{repr(self.sysconfig_platform)}}
 
