@@ -27,6 +27,6 @@ if get_config_vars.__module__ == __name__:
         # to use sysconfig which we patch in sysconfig-patch.py
         pass
 
-    assert _config_vars is None, "distutils.sysconfig was set up prior to patching?"
+    assert not _config_vars, "distutils.sysconfig was set up prior to patching?"
 
 #vi: ft=python
