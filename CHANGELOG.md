@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.3.0] - 2022-06-14
+
+### Added
+- Support for setuptools >= 61 (#94)
+- Support for Pypy (#95)
+
+### Fixed
+- Fixed typo in `mac_ver` (#91)
+- `sysconfig.get_platform()` for ppc64le (#92)
+
 ## [1.2.0] - 2022-01-04
 
 ### Added
