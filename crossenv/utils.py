@@ -125,3 +125,10 @@ def install_script(name, dst, context=None, perms=0o755):
 
     with overwrite_file(dst, perms=perms) as fp:
         fp.write(src)
+
+
+def is_python_source_dir(d):
+    for fn in ("Setup", "Setup.local"):
+        if os.path.isfile(os.path.join(d, "Modules", fn)):
+            return True
+    return False
