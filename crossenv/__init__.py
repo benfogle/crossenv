@@ -16,7 +16,7 @@ import platform
 import pprint
 import re
 
-from .utils import F
+from .utils import F, is_python_source_dir
 from . import utils
 
 __version__ = '1.3.0'
@@ -245,7 +245,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
         else:
             self.host_project_base = os.path.dirname(host)
 
-        if sysconfig._is_python_source_dir(self.host_project_base):
+        if is_python_source_dir(self.host_project_base):
             self.host_makefile = os.path.join(self.host_project_base, 'Makefile')
             pybuilddir = os.path.join(self.host_project_base, 'pybuilddir.txt')
             try:
