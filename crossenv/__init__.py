@@ -228,6 +228,18 @@ class CrossEnvBuilder(venv.EnvBuilder):
             raise FileNotFoundError("No _sysconfigdata*.py found in host lib")
 
 
+    def _is_python_source_dir(self, d):
+        fn = getattr(sysconfig, '_is_python_source_dir', None)
+        if fn:
+            return fn(d)
+
+        # removed in python 3.11
+        for fn in ("Setup", "Setup.local"):
+            if os.path.isfile(os.path.join(d, "Modules", fn)):
+                return True
+        return False
+
+
     def find_host_python(self, host):
         """
         Find Python paths and other info based on a path.
@@ -245,7 +257,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
         else:
             self.host_project_base = os.path.dirname(host)
 
-        if sysconfig._is_python_source_dir(self.host_project_base):
+        if self._is_python_source_dir(self.host_project_base):
             self.host_makefile = os.path.join(self.host_project_base, 'Makefile')
             pybuilddir = os.path.join(self.host_project_base, 'pybuilddir.txt')
             try:
