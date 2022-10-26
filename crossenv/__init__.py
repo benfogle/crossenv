@@ -708,6 +708,16 @@ class CrossEnvBuilder(venv.EnvBuilder):
         # directory.
         stdlib = os.path.abspath(os.path.dirname(os.__file__))
 
+        # In python 3.11, the import machinery imports from math, which breaks
+        # in our cross environment.. so we inject lib-dynload to the path also
+        dynload = os.path.join(stdlib, "lib-dynload")
+
+        # In python 3.11, several system packages are frozen by default, which
+        # prevents us from patching it. Disable it.
+        xopt = subprocess.run([context.build_env_exe, "--help-xoptions"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        disable_frozen_modules = (b'frozen_modules=' in xopt.stdout)
+
         context.sentinel = random.randint(0,0xffffffff)
 
         extra_envs = list(self.extra_env_vars)
