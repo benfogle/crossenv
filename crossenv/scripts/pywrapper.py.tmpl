@@ -17,7 +17,7 @@ os.environ['_PYTHON_HOST_PLATFORM']={{repr(self.host_platform)}}
 os.environ['_PYTHON_SYSCONFIGDATA_NAME']={{repr(sysconfig_name)}}
 os.environ['PYTHONHOME']={{repr(self.host_home)}}
 oldpath = os.environ.get('PYTHONPATH')
-newpath = os.pathsep.join([{{repr(context.lib_path)}}, {{repr(stdlib)}}])
+newpath = os.pathsep.join([{{repr(context.lib_path)}}, {{repr(stdlib)}}, {{repr(dynload)}}])
 if oldpath:
     path = os.pathsep.join([newpath, oldpath])
 else:
@@ -38,6 +38,9 @@ for name, assign, value in extra_envs:
             os.environ[name] = os.environ[name] + ':' + value
         else:
             os.environ[name] = value
+
+if {{repr(disable_frozen_modules)}}:
+    sys.argv[1:1] = ["-X", "frozen_modules=off"]
 
 # This will fix up argv0 so that sys.executable will be correct
 os.execv({{repr(context.build_env_exe)}}, sys.argv)
