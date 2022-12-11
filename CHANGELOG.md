@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.4.0] - 2022-12-11
+
+### Added
+- Support for Python 3.11
+
 ## [1.3.0] - 2022-06-14
 
 ### Added
