@@ -102,6 +102,9 @@ class CrossEnvBuilder(venv.EnvBuilder):
                                      be searched and will error if there are
                                      multiple files that have different values.
     :param manylinux_tags:  Manylinux tags that are acceptable when downloading
+                            from PyPI. Merged with platform_tags and retained for
+                            compatibility only.
+    :param platform_tags:   Platform tags that are acceptable when downloading
                             from PyPI.
     :param host_machine:    Host machine override seen by cross-python at
                             runtime. Default is guessed from host-python.
@@ -122,6 +125,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
             host_config_vars=(),
             host_sysconfigdata_file=None,
             manylinux_tags=(),
+            platform_tags=(),
             host_machine=None):
         self.host_sysroot = host_sysroot
         self.host_cc = None
@@ -150,12 +154,13 @@ class CrossEnvBuilder(venv.EnvBuilder):
             self.cross_prefix = None
             self.clear_cross = clear in ('default', 'cross', 'both')
         self.manylinux_tags = manylinux_tags
+        self.platform_tags = platform_tags
         self.host_machine = host_machine
 
         self.find_host_python(host_python)
         self.find_compiler_info()
         self.get_uname_info()
-        self.expand_manylinux_tags()
+        self.expand_platform_tags()
 
         super().__init__(
                 system_site_packages=False,
@@ -534,49 +539,54 @@ class CrossEnvBuilder(venv.EnvBuilder):
         else:
             self.sysconfig_platform = self.host_platform
 
-    def expand_manylinux_tags(self):
+    def expand_platform_tags(self):
         """
         Convert legacy manylinux tags to PEP600, because pip only looks for one
         or the other
         """
 
-        manylinux_tags = set(self.manylinux_tags)
+        platform_tags = set(self.platform_tags)
+        platform_tags.update(self.manylinux_tags)
         extra_tags = set()
         effective_glibc = None
 
         # we'll be very strict here: don't assume that manylinux2014 implies
         # manylinux1 and so on.
-        if 'manylinux1' in manylinux_tags:
+        if 'manylinux1' in platform_tags:
             extra_tags.add('manylinux_2_5')
             effective_glibc = (2, 5)
-        if 'manylinux2010' in manylinux_tags:
+        if 'manylinux2010' in platform_tags:
             extra_tags.add('manylinux_2_12')
             effective_glibc = (2, 12)
-        if 'manylinux2014' in manylinux_tags:
+        if 'manylinux2014' in platform_tags:
             extra_tags.add('manylinux_2_17')
             effective_glibc = (2, 17)
-        if 'manylinux_2_5' in manylinux_tags:
+        if 'manylinux_2_5' in platform_tags:
             extra_tags.add('manylinux1')
-        if 'manylinux_2_12' in manylinux_tags:
+        if 'manylinux_2_12' in platform_tags:
             extra_tags.add('manylinux2010')
-        if 'manylinux_2_17' in manylinux_tags:
+        if 'manylinux_2_17' in platform_tags:
             extra_tags.add('manylinux2014')
 
-        manylinux_tags.update(extra_tags)
-        self.manylinux_tags = manylinux_tags
+        platform_tags.update(extra_tags)
+        self.platform_tags = platform_tags
 
-        for tag in manylinux_tags:
+        # Retain the spell check from earlier versions just in case
+        for tag in self.manylinux_tags:
             # I know *I* mistype it alot.
-            if not re.search(r'manylinux', tag):
-                logger.warning("Tag %r does not contain 'manylinux'")
+            if 'manylinux' not in tag:
+                logger.warning("Tag %r does not contain 'manylinux'" % tag)
 
+        # This is for patching confstr() in a few places where pip, setuptools,
+        # and packaging try to get the glibc version. Only glibc reports its
+        # version this way, so this is not necessary for, e.g., musl.
+        for tag in self.platform_tags:
             m = re.match(r'manylinux_(\d+)_(\d+)', tag)
             if not m:
                 continue
             glibc = (int(m.group(1)), int(m.group(2)))
             if effective_glibc is None or glibc > effective_glibc:
                 effective_glibc = glibc
-
 
         self.effective_glibc = effective_glibc
 
@@ -773,6 +783,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
             'sysconfig-patch.py',
             'distutils-sysconfig-patch.py',
             'pkg_resources-patch.py',
+            'packaging-tags-patch.py',
         ]
 
         for script in site_scripts:
@@ -1034,7 +1045,12 @@ def main():
     parser.add_argument('--manylinux', action='append', default=[],
         help="""Declare compatibility with the given manylinux platform tag to
                 enable pre-compiled wheels. This argument may be given multiple
-                times.""")
+                times. This is identical to --platform-tag and is retained for
+                compatibility only.""")
+    parser.add_argument('--platform-tag', action='append', default=[],
+        help="""Declare compatibility with the given platform tag to enable
+                pre-compiled wheels. This argument may be given multiple
+                times. Examples include manylinux_2_17 and musllinux_1_2.""")
     parser.add_argument('--machine', action='store',
         help="""Override the value of os.uname().machine if cross-python is
                 unable to guess correctly.""")
@@ -1081,6 +1097,7 @@ def main():
                 host_config_vars = config_vars,
                 host_sysconfigdata_file=args.sysconfigdata_file,
                 manylinux_tags=args.manylinux,
+                platform_tags=args.platform_tag,
                 host_machine=args.machine,
                 )
         for env_dir in args.ENV_DIR:

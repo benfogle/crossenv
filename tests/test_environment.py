@@ -58,6 +58,26 @@ def test_no_manylinux(crossenv, architecture):
     out = out.strip()
     assert 'manylinux' not in out
 
+def test_explicit_platform_tags(tmp_path, host_python, build_python, architecture):
+    crossenv = make_crossenv(
+        tmp_path,
+        host_python,
+        build_python,
+        '--platform-tag=foobar1234',
+        '--platform-tag=mytag',
+        )
+
+    crossenv.check_call(['pip', 'install', 'packaging'])
+    out = crossenv.check_output(['python', '-c', dedent('''\
+            from packaging.tags import compatible_tags
+            platforms = set(tag.platform for tag in compatible_tags())
+            print('\\n'.join(platforms))
+            ''')],
+            universal_newlines=True)
+    out = out.strip()
+    assert 'foobar1234' in out
+    assert 'mytag' in out
+
 def test_explicit_manylinux(tmp_path, host_python, build_python, architecture):
     # not defined for all architectures, so pass them
     if architecture.machine not in ('x86_64', 'aarch64'):
