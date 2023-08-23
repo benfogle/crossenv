@@ -102,6 +102,7 @@ class CrossenvFinder(importlib.abc.MetaPathFinder):
 
     PATCHES = {
         'importlib.machinery': '{{context.lib_path}}/importlib-machinery-patch.py',
+        'importlib.metadata': '{{context.lib_path}}/importlib-metadata-patch.py',
         'sys': '{{context.lib_path}}/sys-patch.py',
         'os': '{{context.lib_path}}/os-patch.py',
         'sysconfig': '{{context.lib_path}}/sysconfig-patch.py',
