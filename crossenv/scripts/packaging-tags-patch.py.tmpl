@@ -1,0 +1,8 @@
+# By default we disable manylinux/manymusl tags. However, we allow users to opt
+# in.
+
+def _linux_platforms():
+    yield from {{repr(self.platform_tags)}}
+    arch = _normalize_string({{repr(self.host_machine)}})
+    archs = {"armv8l": ["armv8l", "armv7l"]}.get(arch, [arch])
+    yield from archs

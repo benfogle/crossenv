@@ -110,6 +110,7 @@ class CrossenvFinder(importlib.abc.MetaPathFinder):
         'platform': '{{context.lib_path}}/platform-patch.py',
         'pkg_resources': '{{context.lib_path}}/pkg_resources-patch.py',
         'pip._vendor.pkg_resources': '{{context.lib_path}}/pkg_resources-patch.py',
+        'packaging.tags': '{{context.lib_path}}/packaging-tags-patch.py',
     }
 
     def __init__(self):
