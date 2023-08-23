@@ -84,6 +84,7 @@ def test_pip_install_numpy(tmp_path, host_python, build_python, python_version):
             sys.exit(ok != True)
             ''')])
 
+
 def test_pip_install_bcrypt(tmp_path, host_python, build_python):
     crossenv = make_crossenv(tmp_path, host_python, build_python)
     crossenv.check_call(['build-pip', '--no-cache-dir', 'install', 'cffi'])
@@ -101,3 +102,26 @@ def test_pip_install_bcrypt(tmp_path, host_python, build_python):
     output = output.strip()
     expected = b"$2b$04$cVWp4XaNU8a4v1uMRum2SO026BWLIoQMD/TXg5uZV.0P.uO8m3YEm"
     assert output == expected
+
+
+def test_build_pyproject_cffi(tmp_path, host_python, build_python):
+    # Adapted from https://github.com/benfogle/crossenv/issues/108
+    crossenv = make_crossenv(tmp_path, host_python, build_python)
+    proj = tmp_path / "myproj"
+    proj.mkdir()
+    with open(proj / "dummy.py", "w"):
+        pass
+    with open(proj / "pyproject.toml", "w") as fp:
+        fp.write(dedent("""
+            [build-system]
+            requires = ["setuptools", "cffi"]
+            """))
+
+    crossenv.check_call(['cross-pip', '--no-cache-dir', 'install', '-U',
+        'pip==23.2.1', 'setuptools==68.0.0', 'wheel==0.41.1', 'build==0.10.0'])
+    crossenv.check_call(['build-pip', '--no-cache-dir', 'install', '-U',
+        'pip==23.2.1', 'setuptools==68.0.0', 'wheel==0.41.1', 'build==0.10.0'])
+    crossenv.check_call(['build-pip', '--no-cache-dir', 'install', 'cffi==1.15.1'])
+    crossenv.check_call(['cross-expose', 'cffi'])
+    crossenv.check_call(['cross-python', '-m', 'build', '--no-isolation'],
+        cwd=proj)

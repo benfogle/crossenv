@@ -779,6 +779,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
             'sys-patch.py',
             'os-patch.py',
             'importlib-machinery-patch.py',
+            'importlib-metadata-patch.py',
             'platform-patch.py',
             'sysconfig-patch.py',
             'distutils-sysconfig-patch.py',
