@@ -533,6 +533,14 @@ class CrossEnvBuilder(venv.EnvBuilder):
             else:
                 raise ValueError("Unexpected major version %s for MACOSX_DEPLOYMENT_TARGET" %
                         major)
+        elif self.host_sysname in {"ios", "tvos", "watchos"}:
+            # CFLAGS will include a `-mios-version-min=X.Y` identifier (or the
+            # equivalent for tvOS and watchOS). Use this as the version number.
+            self.host_release = [
+                flag.split("=")[1] for flag in
+                self.host_sysconfigdata.build_time_vars["CFLAGS"].split(" ")
+                if flag.startswith(f"-m{self.host_sysname}-version-min=")
+            ][0]
 
         if self.host_sysname == "darwin":
             self.sysconfig_platform = "macosx-%s-%s" % (self.macosx_deployment_target,
@@ -543,6 +551,13 @@ class CrossEnvBuilder(venv.EnvBuilder):
             self.sysconfig_platform = "linux-%s" % (self.host_machine)
         else:
             self.sysconfig_platform = self.host_platform
+
+        # Normalize case of the host sysname.
+        self.host_sysname = {
+            "ios": "iOS",
+            "tvos": "tvOS",
+            "watchos": "watchOS",
+        }.get(self.host_sysname, self.host_sysname.title())
 
     def expand_platform_tags(self):
         """
@@ -769,7 +784,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
         host_build_time_vars = self.host_sysconfigdata.build_time_vars
         sysconfig_name = self.host_sysconfigdata_name
 
- 
+
         # Install patches to environment
         self.copy_and_patch_sysconfigdata(context)
 

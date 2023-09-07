@@ -3,7 +3,7 @@ from collections import namedtuple
 platform_uname_result_type = namedtuple('uname_result',
                     'system node release version machine processor')
 _uname_result = platform_uname_result_type(
-        {{repr(self.host_sysname.title())}},
+        {{repr(self.host_sysname)}},
         'build',
         {{repr(self.host_release)}},
         '',
