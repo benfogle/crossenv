@@ -416,7 +416,8 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
         # Sanity check that this is the right compiler. (See #24, #27.)
         res = run_compiler('-dumpmachine')
-        found_triple = res.stdout.strip()
+        # Apple's clang reports "aarch64" as "arm64"
+        found_triple = res.stdout.strip().replace("arm64-", "aarch64-")
         if res.returncode == 0 and found_triple:
             expected = self.host_sysconfigdata.build_time_vars['HOST_GNU_TYPE']
             if not self._compare_triples(found_triple, expected):
