@@ -457,7 +457,6 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
         :param env_dir: The target directory to create an environment in.
         """
-
         env_dir = os.path.abspath(env_dir)
         context = self.ensure_directories(env_dir)
         self.make_build_python(context)
@@ -519,6 +518,13 @@ class CrossEnvBuilder(venv.EnvBuilder):
             else:
                 self.host_machine = self.host_gnu_type.split('-')[0]
 
+            # Apple uses arm64, not aarch64
+            if (
+                self.host_machine == "aarch64"
+                and self.host_sys_platform in {"ios", "tvos", "watchos"}
+            ):
+                self.host_machine = "arm64"
+
         self.host_release = ''
         if self.macosx_deployment_target:
             try:
@@ -551,7 +557,8 @@ class CrossEnvBuilder(venv.EnvBuilder):
             # to ppc64le in self.host_machine
             self.sysconfig_platform = "linux-%s" % (self.host_machine)
         elif self.host_sys_platform in {"ios", "tvos", "watchos"}:
-            self.sysconfig_platform = f'{self.host_sys_platform}-{self.host_release}-{self.host_machine}'
+            multiarch = self.host_sysconfigdata.build_time_vars['MULTIARCH']
+            self.sysconfig_platform = f"{multiarch}-{self.host_release}-{self.host_machine}"
         else:
             self.sysconfig_platform = self.host_platform
 
