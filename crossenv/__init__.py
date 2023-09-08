@@ -701,8 +701,9 @@ class CrossEnvBuilder(venv.EnvBuilder):
         if self.cross_prefix:
             context.cross_env_dir = self.cross_prefix
         else:
-            context.cross_env_dir = os.path.join(context.env_dir, 'cross')
-        clear_cross = self.clear in ('default', 'cross-only', 'both')
+            cross_env_name = os.path.split(context.env_dir)[-1]
+            context.cross_env_dir = os.path.join(context.env_dir, cross_env_name)
+
         env = venv.EnvBuilder(
                 system_site_packages=False,
                 clear=self.clear_cross,
