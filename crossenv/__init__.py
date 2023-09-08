@@ -502,9 +502,9 @@ class CrossEnvBuilder(venv.EnvBuilder):
         # vary.
         host_info = self.host_platform.split('-')
         if not host_info:
-            self.host_sysname = sys.platform
+            self.host_sys_platform = sys.platform
         elif len(host_info) >= 1:
-            self.host_sysname = host_info[0]
+            self.host_sys_platform = host_info[0]
 
         if self.host_machine is None:
             platform2uname = {
@@ -534,22 +534,24 @@ class CrossEnvBuilder(venv.EnvBuilder):
             else:
                 raise ValueError("Unexpected major version %s for MACOSX_DEPLOYMENT_TARGET" %
                         major)
-        elif self.host_sysname in {"ios", "tvos", "watchos"}:
+        elif self.host_sys_platform in {"ios", "tvos", "watchos"}:
             # CFLAGS will include a `-mios-version-min=X.Y` identifier (or the
             # equivalent for tvOS and watchOS). Use this as the version number.
             self.host_release = [
                 flag.split("=")[1] for flag in
                 self.host_sysconfigdata.build_time_vars["CFLAGS"].split(" ")
-                if flag.startswith(f"-m{self.host_sysname}-version-min=")
+                if flag.startswith(f"-m{self.host_sys_platform}-version-min=")
             ][0]
 
-        if self.host_sysname == "darwin":
+        if self.host_sys_platform == "darwin":
             self.sysconfig_platform = "macosx-%s-%s" % (self.macosx_deployment_target,
                 self.host_machine)
-        elif self.host_sysname == "linux":
+        elif self.host_sys_platform == "linux":
             # Use self.host_machine here as powerpc64le gets converted
             # to ppc64le in self.host_machine
             self.sysconfig_platform = "linux-%s" % (self.host_machine)
+        elif self.host_sys_platform in {"ios", "tvos", "watchos"}:
+            self.sysconfig_platform = f'{self.host_sys_platform}-{self.host_release}-{self.host_machine}'
         else:
             self.sysconfig_platform = self.host_platform
 
@@ -558,7 +560,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
             "ios": "iOS",
             "tvos": "tvOS",
             "watchos": "watchOS",
-        }.get(self.host_sysname, self.host_sysname.title())
+        }.get(self.host_sys_platform, self.host_sys_platform.title())
 
     def expand_platform_tags(self):
         """
@@ -803,6 +805,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
             'importlib-metadata-patch.py',
             'platform-patch.py',
             'sysconfig-patch.py',
+            'subprocess-patch.py',
             'distutils-sysconfig-patch.py',
             'pkg_resources-patch.py',
             'packaging-tags-patch.py',

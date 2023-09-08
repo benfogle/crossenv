@@ -1,6 +1,6 @@
 cross_compiling = True
 build_path = {{repr(context.build_sys_path)}}
-
+platform = {{repr(self.host_sys_platform)}}
 abiflags = {{repr(host_build_time_vars.get('ABIFLAGS'))}}
 if abiflags is None:
     del abiflags
