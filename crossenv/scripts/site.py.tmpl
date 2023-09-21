@@ -95,7 +95,7 @@ class CrossenvPatchLegacyLoader(importlib.abc.Loader):
 
 class CrossenvFinder(importlib.abc.MetaPathFinder):
     """Mucks with import machinery in two ways:
-    
+
     1) loads sysconfigdata from our hard-coded path, regardless of sys.path
     2) intercepts and patches modules as they are loaded
     """
@@ -105,6 +105,7 @@ class CrossenvFinder(importlib.abc.MetaPathFinder):
         'importlib.metadata': '{{context.lib_path}}/importlib-metadata-patch.py',
         'sys': '{{context.lib_path}}/sys-patch.py',
         'os': '{{context.lib_path}}/os-patch.py',
+        'subprocess': '{{context.lib_path}}/subprocess-patch.py',
         'sysconfig': '{{context.lib_path}}/sysconfig-patch.py',
         'distutils.sysconfig': '{{context.lib_path}}/distutils-sysconfig-patch.py',
         'distutils.sysconfig_pypy': '{{context.lib_path}}/distutils-sysconfig-patch.py',

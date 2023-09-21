@@ -416,11 +416,16 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
         # Sanity check that this is the right compiler. (See #24, #27.)
         res = run_compiler('-dumpmachine')
-        # Apple's clang reports "aarch64" as "arm64"
-        found_triple = res.stdout.strip().replace("arm64-", "aarch64-")
+        found_triple = res.stdout.strip()
         if res.returncode == 0 and found_triple:
             expected = self.host_sysconfigdata.build_time_vars['HOST_GNU_TYPE']
-            if not self._compare_triples(found_triple, expected):
+            clean_found = self._clean_triple(found_triple)
+            clean_expected = self._clean_triple(expected)
+            if (
+                clean_found is not None
+                and clean_expected is not None
+                and clean_found != clean_expected
+            ):
                 logger.warning("The cross-compiler (%r) does not appear to be "
                                "for the correct architecture (got %s, expected "
                                "%s). Use --cc to correct, if necessary.",
@@ -428,28 +433,35 @@ class CrossEnvBuilder(venv.EnvBuilder):
                                found_triple,
                                expected)
 
-    def _compare_triples(self, x, y):
-        # They are in the form cpu-vendor-kernel-system or cpu-kernel-system.
-        # So we'll get something like: x86_64-linux-gnu or x86_64-pc-linux-gnu.
-        # We won't overcomplicate this, since it's just to generate a warning.
+    def _clean_triple(self, triple):
+        # They are in the form cpu-vendor-kernel-system or cpu-kernel-system. So we'll
+        # get something like: x86_64-linux-gnu or x86_64-pc-linux-gnu. We won't
+        # overcomplicate this, since it's just to generate a warning.
         #
-        # We return True if we can't make sense of anything and wish to skip
-        # the warning.
+        # Apple builds accept use "arm64-apple-ios12.0-simulator" for an iOS simulator.
+        # The host GNU type returned by clang won't include the version number; we also
+        # need to map "arm64" to "aarch64", and allow for the "-simulator" suffix.
 
-        parts_x = x.split('-')
-        if len(parts_x) == 4:
-            del parts_x[1]
-        elif len(parts_x) != 3:
-            return True # Some other form? Bail out.
+        parts = triple.split('-')
+        if parts[1] == "apple":
+            # Normalize Apple's CPU architecture
+            if parts[0] == "arm64":
+                parts[0] = "aarch64"
 
-        parts_y = y.split('-')
-        if len(parts_y) == 4:
-            del parts_y[1]
-        elif len(parts_y) != 3:
-            return True # Some other form? Bail out.
+            # Remove the iOS/tvOS/watchOS version number
+            if parts[2].startswith("ios"):
+                parts[2] = "ios"
+            elif parts[2].startswith("tvos"):
+                parts[2] = "tvos"
+            elif parts[2].startswith("watchos"):
+                parts[2] = "watchos"
 
-        return parts_x == parts_y
+        if len(parts) == 4 and parts[1] != "apple":
+            del parts[1]
+        elif len(parts) != 3:
+            return None  # Some other form? Bail out.
 
+        return parts
 
     def create(self, env_dir):
         """
@@ -496,9 +508,10 @@ class CrossEnvBuilder(venv.EnvBuilder):
         """
         What should uname() return?
         """
-
-        # host_platform is _probably_ something like linux-x86_64, but it can
-        # vary.
+        # host_platform is _probably_ something like linux-x86_64, but it can vary.
+        # On iOS/tvOS/watchOS, it will be of the form ios-12.0-iphonesimulator-arm64,
+        # telling you sys.platform, the minimum supported OS version, the device ABI,
+        # and the architecture.
         host_info = self.host_platform.split('-')
         if not host_info:
             self.host_sys_platform = sys.platform
@@ -514,18 +527,33 @@ class CrossEnvBuilder(venv.EnvBuilder):
             }
             if len(host_info) > 1 and host_info[-1] in platform2uname:
                 # Test that this is still a special case when we can.
-                self.host_machine = platform2uname[host_info[-1]]
+                self.host_arch = platform2uname[host_info[-1]]
             else:
-                self.host_machine = self.host_gnu_type.split('-')[0]
+                self.host_arch = self.host_gnu_type.split('-')[0]
 
-            # Apple uses arm64, not aarch64
-            if (
-                self.host_machine == "aarch64"
-                and self.host_sys_platform in {"ios", "tvos", "watchos"}
-            ):
-                self.host_machine = "arm64"
+            # iOS/tvOS/watchOS return the device type as the machine, have a separate
+            # concept of being a simulator, and use arm64 rather than aarch64 as an
+            # architecture descriptor.
+            if self.host_sys_platform in {"ios", "tvos", "watchos"}:
+                if self.host_arch == "aarch64":
+                    self.host_arch = "arm64"
 
-        self.host_release = ''
+                self.host_machine, self.host_is_simulator = {
+                    "iphoneos": ("iPhone", False),
+                    "iphonesimulator": ("iPhoneSimulator", True),
+                    "appletvos": ("AppleTV", False),
+                    "appletvsimulator": ("AppleTVSimulator", True),
+                    "watchos": ("AppleWatch", False),
+                    "watchsimulator": ("AppleWatchSimulator", True),
+                }[host_info[2]]
+            else:
+                # On all other platforms, machine == arch
+                self.host_machine = self.host_arch
+                self.host_is_simulator = None
+        else:
+            self.host_arch = self.host_machine
+            self.host_is_simulator = None
+
         if self.macosx_deployment_target:
             try:
                 major, minor = self.macosx_deployment_target.split(".")
@@ -541,13 +569,9 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 raise ValueError("Unexpected major version %s for MACOSX_DEPLOYMENT_TARGET" %
                         major)
         elif self.host_sys_platform in {"ios", "tvos", "watchos"}:
-            # CFLAGS will include a `-mios-version-min=X.Y` identifier (or the
-            # equivalent for tvOS and watchOS). Use this as the version number.
-            self.host_release = [
-                flag.split("=")[1] for flag in
-                self.host_sysconfigdata.build_time_vars["CFLAGS"].split(" ")
-                if flag.startswith(f"-m{self.host_sys_platform}-version-min=")
-            ][0]
+            self.host_release = host_info[1]
+        else:
+            self.host_release = ''
 
         if self.host_sys_platform == "darwin":
             self.sysconfig_platform = "macosx-%s-%s" % (self.macosx_deployment_target,
@@ -556,17 +580,24 @@ class CrossEnvBuilder(venv.EnvBuilder):
             # Use self.host_machine here as powerpc64le gets converted
             # to ppc64le in self.host_machine
             self.sysconfig_platform = "linux-%s" % (self.host_machine)
-        elif self.host_sys_platform in {"ios", "tvos", "watchos"}:
-            multiarch = self.host_sysconfigdata.build_time_vars['MULTIARCH']
-            self.sysconfig_platform = f"{multiarch}-{self.host_release}-{self.host_machine}"
         else:
             self.sysconfig_platform = self.host_platform
 
-        # Normalize case of the host sysname.
-        self.host_sysname = {
+        self.sysconfig_ext_suffix = self.host_sysconfigdata.build_time_vars['EXT_SUFFIX']
+
+        # Normalize case of the host system/sysname.
+        self.host_system = {
             "ios": "iOS",
             "tvos": "tvOS",
             "watchos": "watchOS",
+        }.get(self.host_sys_platform, self.host_sys_platform.title())
+
+        # on iOS/tvOS/watchOS, platform.uname() reports the actual OS name;
+        # os.uname() reports the *kernel* name.
+        self.host_sysname = {
+            "ios": "Darwin",
+            "tvos": "Darwin",
+            "watchos": "Darwin",
         }.get(self.host_sys_platform, self.host_sys_platform.title())
 
     def expand_platform_tags(self):

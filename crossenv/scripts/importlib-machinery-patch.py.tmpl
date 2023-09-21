@@ -25,3 +25,5 @@ def _PathFinder_find_spec(cls, fullname, path=None, target=None):
 
     return _original_find_spec(fullname, path, target)
 PathFinder.find_spec = _PathFinder_find_spec
+
+EXTENSION_SUFFIXES = [{{repr(self.sysconfig_ext_suffix)}}, ".abi3.dylib", ".dylib"]

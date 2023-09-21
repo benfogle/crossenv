@@ -3,12 +3,12 @@ from collections import namedtuple
 platform_uname_result_type = namedtuple('uname_result',
                     'system node release version machine processor')
 _uname_result = platform_uname_result_type(
-        {{repr(self.host_sysname)}},
+        {{repr(self.host_system)}},
         'build',
         {{repr(self.host_release)}},
         '',
         {{repr(self.host_machine)}},
-        {{repr(self.host_machine)}})
+        {{repr(self.host_arch)}})
 def uname():
     return _uname_result
 
