@@ -5,8 +5,12 @@ _can_fork_exec = True
 from _posixsubprocess import fork_exec as _fork_exec
 
 import os
-_del_safe.waitpid = os.waitpid
-_del_safe.waitstatus_to_exitcode =  os.waitstatus_to_exitcode
-_del_safe.WIFSTOPPED =  os.WIFSTOPPED
-_del_safe.WSTOPSIG = os.WSTOPSIG
-_del_safe.WNOHANG = os.WNOHANG
+try:
+    _del_safe.waitpid = os.waitpid
+    _del_safe.waitstatus_to_exitcode =  os.waitstatus_to_exitcode
+    _del_safe.WIFSTOPPED =  os.WIFSTOPPED
+    _del_safe.WSTOPSIG = os.WSTOPSIG
+    _del_safe.WNOHANG = os.WNOHANG
+except NameError:
+    # Pre Python 3.11 doesn't have the _del_safe helper.
+    pass
