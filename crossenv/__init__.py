@@ -506,10 +506,15 @@ class CrossEnvBuilder(venv.EnvBuilder):
             self.host_sysname = host_info[0]
 
         if self.host_machine is None:
-            if len(host_info) > 1 and host_info[-1] == "powerpc64le":
-                # Test that this is still a special case when we can.
+            platform2uname = {
+                # On uname.machine=ppc64, _PYTHON_HOST_PLATFORM is linux-powerpc64
+                "powerpc64": "ppc64",
                 # On uname.machine=ppc64le, _PYTHON_HOST_PLATFORM is linux-powerpc64le
-                self.host_machine = "ppc64le"
+                "powerpc64le": "ppc64le",
+            }
+            if len(host_info) > 1 and host_info[-1] in platform2uname:
+                # Test that this is still a special case when we can.
+                self.host_machine = platform2uname[host_info[-1]]
             else:
                 self.host_machine = self.host_gnu_type.split('-')[0]
 
