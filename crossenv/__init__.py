@@ -358,10 +358,20 @@ class CrossEnvBuilder(venv.EnvBuilder):
             # It was probably natively compiled, but not necessarily for this
             # architecture. Guess from HOST_GNU_TYPE.
             host = self.host_gnu_type.split('-')
-            if len(host) == 4: # i.e., aarch64-unknown-linux-gnu
-                self.host_platform = '-'.join([host[2], host[0]])
-            elif len(host) == 3: # i.e., aarch64-linux-gnu, unlikely.
-                self.host_platform = '-'.join([host[1], host[0]])
+            if len(host) == 4:
+                if host[1] == "apple":
+                    machine = self.host_sysconfigdata.build_time_vars['MULTIARCH']
+                    os_name, release = self._split_apple_os_version(host[2])
+                    self.host_platform = '-'.join([os_name, release, machine])
+                else:  # i.e., aarch64-unknown-linux-gnu
+                    self.host_platform = '-'.join([host[2], host[0]])
+            elif len(host) == 3:
+                if host[1] == "apple":
+                    machine = self.host_sysconfigdata.build_time_vars['MULTIARCH']
+                    os_name, release = self._split_apple_os_version(host[2])
+                    self.host_platform = '-'.join([os_name, release, machine])
+                else:   # i.e., aarch64-linux-gnu, unlikely.
+                    self.host_platform = '-'.join([host[1], host[0]])
             else:
                 logger.warning("Cannot determine platform. Using build.")
                 self.host_platform = sysconfig.get_platform()
@@ -433,6 +443,18 @@ class CrossEnvBuilder(venv.EnvBuilder):
                                found_triple,
                                expected)
 
+    def _split_apple_os_version(self, value):
+        # Split the Apple OS version from the OS name prefix.
+        if value.startswith("ios"):
+            offset = 3
+        elif value.startswith("tvos"):
+            offset = 4
+        elif value.startswith("watchos"):
+            offset = 7
+        else:
+            raise Va
+        return value[:offset], value[offset:]
+
     def _clean_triple(self, triple):
         # They are in the form cpu-vendor-kernel-system or cpu-kernel-system. So we'll
         # get something like: x86_64-linux-gnu or x86_64-pc-linux-gnu. We won't
@@ -448,13 +470,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
             if parts[0] == "arm64":
                 parts[0] = "aarch64"
 
-            # Remove the iOS/tvOS/watchOS version number
-            if parts[2].startswith("ios"):
-                parts[2] = "ios"
-            elif parts[2].startswith("tvos"):
-                parts[2] = "tvos"
-            elif parts[2].startswith("watchos"):
-                parts[2] = "watchos"
+            parts[2], _ = self._split_apple_os_version(parts[2])
 
         if len(parts) == 4 and parts[1] != "apple":
             del parts[1]
@@ -539,13 +555,13 @@ class CrossEnvBuilder(venv.EnvBuilder):
                     self.host_arch = "arm64"
 
                 self.host_machine, self.host_is_simulator = {
-                    "iphoneos": ("iPhone", False),
-                    "iphonesimulator": ("iPhoneSimulator", True),
-                    "appletvos": ("AppleTV", False),
-                    "appletvsimulator": ("AppleTVSimulator", True),
-                    "watchos": ("AppleWatch", False),
-                    "watchsimulator": ("AppleWatchSimulator", True),
-                }[host_info[2]]
+                    "iphoneos": ("arm64", False),
+                    "iphonesimulator": (self.host_arch, True),
+                    "appletvos": ("arm64", False),
+                    "appletvsimulator": (self.host_arch, True),
+                    "watchos": ("arm64_32", False),
+                    "watchsimulator": (self.host_arch, True),
+                }[host_info[3]]
             else:
                 # On all other platforms, machine == arch
                 self.host_machine = self.host_arch

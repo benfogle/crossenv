@@ -9,10 +9,10 @@ implementation._multiarch = {{repr(host_build_time_vars.get('MULTIARCH'))}}
 if implementation._multiarch is None:
     del implementation._multiarch
 
-implementation._simulator = {{repr(self.host_is_simulator)}}
-if implementation._simulator is None:
-    del implementation._simulator
-
 # Remove cross-python from sys.path. It's not needed after startup.
 path.remove({{repr(context.lib_path)}})
 path.remove({{repr(stdlib)}})
+
+# If a process started by cross-python tries to start a subprocess with sys.executable,
+# make sure that it points at cross-python.
+executable = {{repr(context.cross_env_exe)}}

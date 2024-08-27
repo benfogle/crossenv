@@ -22,6 +22,22 @@ def mac_ver(release='', versioninfo=('', '', ''), machine=''):
         machine = _uname_result.machine
     return release, versioninfo, machine
 
+IOSVersionInfo = collections.namedtuple(
+    "IOSVersionInfo",
+    ["system", "release", "model", "is_simulator"]
+)
+
+def ios_ver(system="", release="", model="", is_simulator=False):
+    if system == "":
+        system = {{repr(self.host_system)}}
+    if release == "":
+        release = {{repr(self.host_release)}}
+    if model == "":
+        model = {{repr("iPhone" if self.host_is_simulator else "iPhone13,2")}}
+    if release == "":
+        release = {{repr(self.host_is_simulator)}}
+    return IOSVersionInfo(system, release, model, is_simulator)
+
 # Old, deprecated functions, but we support back to 3.5
 if '_linux_distribution' in globals():
     def _linux_distribution(distname, version, id, supported_dists,
