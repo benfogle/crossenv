@@ -913,12 +913,16 @@ class CrossEnvBuilder(venv.EnvBuilder):
         host_cc = self.real_host_cc[0]
         host_cxx = self.real_host_cxx[0]
         host_ar = self.real_host_ar[0]
+        host_prefix = self.host_sysconfigdata.build_time_vars['prefix']
+
         repl_cc = self.host_cc[0]
         repl_cxx = self.host_cxx[0]
         repl_ar = self.host_ar[0]
+
         find_cc = re.compile(r'(?:^|(?<=\s))%s(?=\s|$)' % re.escape(host_cc))
         find_cxx = re.compile(r'(?:^|(?<=\s))%s(?=\s|$)' % re.escape(host_cxx))
         find_ar = re.compile(r'(?:^|(?<=\s))%s(?=\s|$)' % re.escape(host_ar))
+        find_prefix = re.compile(r'(?:^|(?<=\s))%s' % re.escape(host_prefix))
 
         cross_sysconfig_data = {}
         for key, value in self.host_sysconfigdata.__dict__.items():
@@ -932,6 +936,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 value = find_ar.sub(repl_ar, value)
                 value = find_cxx.sub(repl_cxx, value)
                 value = find_cc.sub(repl_cc, value)
+                value = find_prefix.sub(self.host_home, value)
 
             build_time_vars[key] = value
 
