@@ -8,11 +8,8 @@ from textwrap import dedent
 import subprocess
 import logging
 import importlib
-import types
-from configparser import ConfigParser
 import random
 import shlex
-import platform
 import pprint
 import re
 
@@ -452,11 +449,11 @@ class CrossEnvBuilder(venv.EnvBuilder):
         elif value.startswith("watchos"):
             offset = 7
         else:
-            raise Va
+            raise ValueError("Unknown Apple compiler triple.")
         return value[:offset], value[offset:]
 
     def _clean_triple(self, triple):
-        # They are in the form cpu-vendor-kernel-system or cpu-kernel-system. So we'll
+        # Triples are in the form cpu-vendor-kernel-system or cpu-kernel-system. So we'll
         # get something like: x86_64-linux-gnu or x86_64-pc-linux-gnu. We won't
         # overcomplicate this, since it's just to generate a warning.
         #
@@ -466,13 +463,16 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
         parts = triple.split('-')
         if parts[1] == "apple":
-            # Normalize Apple's CPU architecture
+            # Normalize Apple's CPU architecture descriptor to the GNU form.
             if parts[0] == "arm64":
                 parts[0] = "aarch64"
 
+            # Remove any version identifier from the OS (e.g., ios13.0 -> ios)
             parts[2], _ = self._split_apple_os_version(parts[2])
 
         if len(parts) == 4 and parts[1] != "apple":
+            # 4-part "triples" are expected for Apple simulators;
+            # on any other platform, drop the 4th part.
             del parts[1]
         elif len(parts) != 3:
             return None  # Some other form? Bail out.
@@ -485,6 +485,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
 
         :param env_dir: The target directory to create an environment in.
         """
+
         env_dir = os.path.abspath(env_dir)
         context = self.ensure_directories(env_dir)
         self.make_build_python(context)
@@ -525,7 +526,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
         What should uname() return?
         """
         # host_platform is _probably_ something like linux-x86_64, but it can vary.
-        # On iOS/tvOS/watchOS, it will be of the form ios-12.0-iphonesimulator-arm64,
+        # On iOS/tvOS/watchOS, it will be of the form ios-13.0-arm64-iphonesimulator,
         # telling you sys.platform, the minimum supported OS version, the device ABI,
         # and the architecture.
         host_info = self.host_platform.split('-')
@@ -534,6 +535,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
         elif len(host_info) >= 1:
             self.host_sys_platform = host_info[0]
 
+        self.host_is_simulator = None
         if self.host_machine is None:
             platform2uname = {
                 # On uname.machine=ppc64, _PYTHON_HOST_PLATFORM is linux-powerpc64
@@ -543,32 +545,14 @@ class CrossEnvBuilder(venv.EnvBuilder):
             }
             if len(host_info) > 1 and host_info[-1] in platform2uname:
                 # Test that this is still a special case when we can.
-                self.host_arch = platform2uname[host_info[-1]]
+                self.host_machine = platform2uname[host_info[-1]]
+            elif self.host_sys_platform in {"ios", "tvos", "watchos"}:
+                # iOS/tvOS/watchOS return the machine type as the last part
+                # of the host info. The device is a simulator
+                self.host_machine = host_info[-2]
+                self.host_is_simulator = host_info[-1].endswith("simulator")
             else:
-                self.host_arch = self.host_gnu_type.split('-')[0]
-
-            # iOS/tvOS/watchOS return the device type as the machine, have a separate
-            # concept of being a simulator, and use arm64 rather than aarch64 as an
-            # architecture descriptor.
-            if self.host_sys_platform in {"ios", "tvos", "watchos"}:
-                if self.host_arch == "aarch64":
-                    self.host_arch = "arm64"
-
-                self.host_machine, self.host_is_simulator = {
-                    "iphoneos": ("arm64", False),
-                    "iphonesimulator": (self.host_arch, True),
-                    "appletvos": ("arm64", False),
-                    "appletvsimulator": (self.host_arch, True),
-                    "watchos": ("arm64_32", False),
-                    "watchsimulator": (self.host_arch, True),
-                }[host_info[3]]
-            else:
-                # On all other platforms, machine == arch
-                self.host_machine = self.host_arch
-                self.host_is_simulator = None
-        else:
-            self.host_arch = self.host_machine
-            self.host_is_simulator = None
+                self.host_machine = self.host_gnu_type.split('-')[0]
 
         if self.macosx_deployment_target:
             try:

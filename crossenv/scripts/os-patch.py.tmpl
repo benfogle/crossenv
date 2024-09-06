@@ -8,7 +8,7 @@ _uname_result = uname_result_type(
         'build',
         {{repr(self.host_release)}},
         '',
-        {{repr(self.host_arch)}})
+        {{repr(self.host_machine)}})
 
 def uname():
     return _uname_result
