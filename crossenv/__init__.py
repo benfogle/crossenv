@@ -547,8 +547,9 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 # Test that this is still a special case when we can.
                 self.host_machine = platform2uname[host_info[-1]]
             elif self.host_sys_platform in {"ios", "tvos", "watchos"}:
-                # iOS/tvOS/watchOS return the machine type as the last part
-                # of the host info. The device is a simulator
+                # iOS/tvOS/watchOS return the machine type as the last part of
+                # the host info. The device is a simulator if the last part ends
+                # with "simulator" (e.g., "iphoneos" vs "iphonesimulator")
                 self.host_machine = host_info[-2]
                 self.host_is_simulator = host_info[-1].endswith("simulator")
             else:
