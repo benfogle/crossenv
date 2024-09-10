@@ -736,15 +736,16 @@ class CrossEnvBuilder(venv.EnvBuilder):
         if self.cross_prefix:
             context.cross_env_dir = self.cross_prefix
         else:
-            cross_env_name = os.path.split(context.env_dir)[-1]
-            context.cross_env_dir = os.path.join(context.env_dir, cross_env_name)
+            context.cross_env_dir = os.path.join(context.env_dir, "cross")
+        cross_env_name = os.path.split(context.env_dir)[-1]
 
         env = venv.EnvBuilder(
                 system_site_packages=False,
                 clear=self.clear_cross,
                 symlinks=True,
                 upgrade=False,
-                with_pip=False)
+                with_pip=False,
+                prompt=cross_env_name)
         env.create(context.cross_env_dir)
         context.cross_bin_path = os.path.join(context.cross_env_dir, 'bin')
         context.cross_lib_path = os.path.join(context.cross_env_dir, 'lib')
