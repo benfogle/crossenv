@@ -20,6 +20,9 @@ __version__ = '1.4.0'
 
 logger = logging.getLogger(__name__)
 
+APPLE_MOBILE_PLATFORMS = {"ios", "tvos", "watchos"}
+
+
 class CrossEnvBuilder(venv.EnvBuilder):
     """
     A class to build a cross-compiling virtual environment useful for
@@ -546,7 +549,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
             if len(host_info) > 1 and host_info[-1] in platform2uname:
                 # Test that this is still a special case when we can.
                 self.host_machine = platform2uname[host_info[-1]]
-            elif self.host_sys_platform in {"ios", "tvos", "watchos"}:
+            elif self.host_sys_platform in APPLE_MOBILE_PLATFORMS:
                 # iOS/tvOS/watchOS return the machine type as the last part of
                 # the host info. The device is a simulator if the last part ends
                 # with "simulator" (e.g., "iphoneos" vs "iphonesimulator")
@@ -569,7 +572,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
             else:
                 raise ValueError("Unexpected major version %s for MACOSX_DEPLOYMENT_TARGET" %
                         major)
-        elif self.host_sys_platform in {"ios", "tvos", "watchos"}:
+        elif self.host_sys_platform in APPLE_MOBILE_PLATFORMS:
             self.host_release = host_info[1]
         else:
             self.host_release = ''
