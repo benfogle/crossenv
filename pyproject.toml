@@ -23,6 +23,16 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "tox",
+]
+test = [
+    "pytest",
+    "pytest-xdist",
+    "coverage",
+]
+
 [project.urls]
 Homepage = "https://github.com/benfogle/crossenv"
 
@@ -34,3 +44,28 @@ version = { attr = "crossenv.__version__" }
 
 [tool.setuptools.package-data]
 crossenv = ["scripts/*"]
+
+[tool.coverage.run]
+parallel = true
+branch = true
+relative_files = true
+source_pkgs = ["crossenv"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+skip_empty = true
+precision = 1
+exclude_lines = [
+    "pragma: no cover",
+    "@(abc\\.)?abstractmethod",
+    "NotImplementedError\\(\\)",
+    "if TYPE_CHECKING:",
+]
+
+[tool.pytest.ini_options]
+testpaths = "tests"
+norecursedirs = [
+    "prebuilt",
+    "sources",
+]
