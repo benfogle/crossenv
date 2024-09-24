@@ -851,6 +851,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
             'sysconfig-patch.py',
             'subprocess-patch.py',
             'distutils-sysconfig-patch.py',
+            'pip-_vendor-distlib-scripts-patch.py',
             'pkg_resources-patch.py',
             'packaging-tags-patch.py',
         ]
