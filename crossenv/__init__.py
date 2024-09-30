@@ -276,7 +276,8 @@ class CrossEnvBuilder(venv.EnvBuilder):
             sysconfig_paths = [os.path.join(self.host_project_base, build_dir)]
         else:
             self.host_home = self.find_installed_host_home()
-            python_ver = 'python' + sysconfig.get_config_var('py_version_short')
+            py_thread = 't' if sysconfig.get_config_var('Py_GIL_DISABLED') else ''
+            python_ver = 'python' + sysconfig.get_config_var('py_version_short') + py_thread
             libdir = os.path.join(self.host_home, 'lib', python_ver)
             sysconfig_paths = [
                 libdir,
