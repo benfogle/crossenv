@@ -294,7 +294,7 @@ class Resource(ExecEnvironment):
         shutil.copytree(
             str(self.path),
             str(destdir),
-            preserve_symlinks=symlinks
+            symlinks=symlinks
         )
         return new_env
 
