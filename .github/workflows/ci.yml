@@ -16,7 +16,7 @@ concurrency:
 
 defaults:
   run:
-    shell: bash  # https://github.com/beeware/briefcase/pull/912
+    shell: bash
 
 env:
   FORCE_COLOR: "1"
