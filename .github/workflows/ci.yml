@@ -51,23 +51,7 @@ jobs:
       - name: Install System dependencies
         run: |
           sudo apt update
-          sudo apt install -y \
-              qemu-user \
-              git-lfs \
-              build-essential \
-              cmake \
-              git \
-              libbz2-dev \
-              libc6-dev \
-              libffi-dev \
-              liblzma-dev \
-              libsqlite3-dev \
-              libssl-dev \
-              make \
-              pkg-config \
-              wget \
-              zlib1g-dev
-
+          sudo apt install -y qemu-user cmake pkg-config
 
       - name: Pull prebuilt binaries
         run: |

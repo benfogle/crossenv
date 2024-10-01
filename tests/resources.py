@@ -290,10 +290,11 @@ class Resource(ExecEnvironment):
             destdir = self._get_temp()
 
         new_env = copy.copy(self)
-        new_env.path = destdir
+        new_env.path = destdir / "env"
+        breakpoint()
         shutil.copytree(
             str(self.path),
-            str(destdir),
+            str(destdir / "env"),
             symlinks=symlinks
         )
         return new_env
