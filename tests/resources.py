@@ -291,7 +291,6 @@ class Resource(ExecEnvironment):
 
         new_env = copy.copy(self)
         new_env.path = destdir / "env"
-        breakpoint()
         shutil.copytree(
             str(self.path),
             str(destdir / "env"),
