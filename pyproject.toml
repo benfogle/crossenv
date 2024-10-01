@@ -28,9 +28,10 @@ dev = [
     "tox",
 ]
 test = [
+    "coverage",
     "pytest",
     "pytest-xdist",
-    "coverage",
+    "wheel",
 ]
 
 [project.urls]
