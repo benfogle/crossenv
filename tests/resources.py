@@ -2,11 +2,8 @@ import os
 from pathlib import Path
 import shutil
 import hashlib
-import subprocess
-import string
 import copy
 from textwrap import dedent
-from distutils.dir_util import copy_tree
 from collections import namedtuple
 
 import pytest
@@ -293,10 +290,12 @@ class Resource(ExecEnvironment):
             destdir = self._get_temp()
 
         new_env = copy.copy(self)
-        new_env.path = destdir
-        copy_tree(str(self.path),
-                  str(destdir),
-                  preserve_symlinks=symlinks)
+        new_env.path = destdir / "env"
+        shutil.copytree(
+            str(self.path),
+            str(destdir / "env"),
+            symlinks=symlinks
+        )
         return new_env
 
     def derive(self):
