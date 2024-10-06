@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.0] - 2024-10-05
+
+### Added
+- Support for arbitrary platform tags via --platform-tag
+- Correctly handle importlib.metadata
+- Correctly map powerpc architecture variants
+- Support Python freethreading build
+
 ## [1.4.0] - 2022-12-11
 
 ### Added
