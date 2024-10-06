@@ -1,3 +1,4 @@
+# Pre 3.10 configuration of prefixes
 # Patch the things that depend on os.environ
 _PROJECT_BASE = {{repr(self.host_project_base)}}
 
@@ -7,6 +8,15 @@ _PREFIX = os.path.normpath(sys.prefix)
 _BASE_PREFIX = os.path.normpath(sys.base_prefix)
 _EXEC_PREFIX = os.path.normpath(sys.exec_prefix)
 _BASE_EXEC_PREFIX = os.path.normpath(sys.base_exec_prefix)
+
+# Python 3.10 introduced get_preferred_scheme; 3.11 made that method able to
+# identify virtual environments. Hard-code the 3.11 behavior, since we will
+# always be in a venv.
+if "venv" not in _INSTALL_SCHEMES:
+    def get_preferred_scheme(key):
+        return "venv"
+
+    _INSTALL_SCHEMES["venv"] = _INSTALL_SCHEMES["posix_prefix"]
 
 def get_makefile_filename():
     return {{repr(self.host_makefile)}}

@@ -8,11 +8,8 @@ from textwrap import dedent
 import subprocess
 import logging
 import importlib
-import types
-from configparser import ConfigParser
 import random
 import shlex
-import platform
 import pprint
 import re
 
@@ -22,6 +19,9 @@ from . import utils
 __version__ = '1.5.0'
 
 logger = logging.getLogger(__name__)
+
+APPLE_MOBILE_PLATFORMS = {"ios", "tvos", "watchos"}
+
 
 class CrossEnvBuilder(venv.EnvBuilder):
     """
@@ -359,10 +359,20 @@ class CrossEnvBuilder(venv.EnvBuilder):
             # It was probably natively compiled, but not necessarily for this
             # architecture. Guess from HOST_GNU_TYPE.
             host = self.host_gnu_type.split('-')
-            if len(host) == 4: # i.e., aarch64-unknown-linux-gnu
-                self.host_platform = '-'.join([host[2], host[0]])
-            elif len(host) == 3: # i.e., aarch64-linux-gnu, unlikely.
-                self.host_platform = '-'.join([host[1], host[0]])
+            if len(host) == 4:
+                if host[1] == "apple":
+                    machine = self.host_sysconfigdata.build_time_vars['MULTIARCH']
+                    os_name, release = self._split_apple_os_version(host[2])
+                    self.host_platform = '-'.join([os_name, release, machine])
+                else:  # i.e., aarch64-unknown-linux-gnu
+                    self.host_platform = '-'.join([host[2], host[0]])
+            elif len(host) == 3:
+                if host[1] == "apple":
+                    machine = self.host_sysconfigdata.build_time_vars['MULTIARCH']
+                    os_name, release = self._split_apple_os_version(host[2])
+                    self.host_platform = '-'.join([os_name, release, machine])
+                else:   # i.e., aarch64-linux-gnu, unlikely.
+                    self.host_platform = '-'.join([host[1], host[0]])
             else:
                 logger.warning("Cannot determine platform. Using build.")
                 self.host_platform = sysconfig.get_platform()
@@ -420,7 +430,13 @@ class CrossEnvBuilder(venv.EnvBuilder):
         found_triple = res.stdout.strip()
         if res.returncode == 0 and found_triple:
             expected = self.host_sysconfigdata.build_time_vars['HOST_GNU_TYPE']
-            if not self._compare_triples(found_triple, expected):
+            clean_found = self._clean_triple(found_triple)
+            clean_expected = self._clean_triple(expected)
+            if (
+                clean_found is not None
+                and clean_expected is not None
+                and clean_found != clean_expected
+            ):
                 logger.warning("The cross-compiler (%r) does not appear to be "
                                "for the correct architecture (got %s, expected "
                                "%s). Use --cc to correct, if necessary.",
@@ -428,28 +444,44 @@ class CrossEnvBuilder(venv.EnvBuilder):
                                found_triple,
                                expected)
 
-    def _compare_triples(self, x, y):
-        # They are in the form cpu-vendor-kernel-system or cpu-kernel-system.
-        # So we'll get something like: x86_64-linux-gnu or x86_64-pc-linux-gnu.
-        # We won't overcomplicate this, since it's just to generate a warning.
+    def _split_apple_os_version(self, value):
+        # Split the Apple OS version from the OS name prefix.
+        if value.startswith("ios"):
+            offset = 3
+        elif value.startswith("tvos"):
+            offset = 4
+        elif value.startswith("watchos"):
+            offset = 7
+        else:
+            raise ValueError("Unknown Apple compiler triple.")
+        return value[:offset], value[offset:]
+
+    def _clean_triple(self, triple):
+        # Triples are in the form cpu-vendor-kernel-system or cpu-kernel-system. So we'll
+        # get something like: x86_64-linux-gnu or x86_64-pc-linux-gnu. We won't
+        # overcomplicate this, since it's just to generate a warning.
         #
-        # We return True if we can't make sense of anything and wish to skip
-        # the warning.
+        # Apple builds accept use "arm64-apple-ios12.0-simulator" for an iOS simulator.
+        # The host GNU type returned by clang won't include the version number; we also
+        # need to map "arm64" to "aarch64", and allow for the "-simulator" suffix.
 
-        parts_x = x.split('-')
-        if len(parts_x) == 4:
-            del parts_x[1]
-        elif len(parts_x) != 3:
-            return True # Some other form? Bail out.
+        parts = triple.split('-')
+        if parts[1] == "apple":
+            # Normalize Apple's CPU architecture descriptor to the GNU form.
+            if parts[0] == "arm64":
+                parts[0] = "aarch64"
 
-        parts_y = y.split('-')
-        if len(parts_y) == 4:
-            del parts_y[1]
-        elif len(parts_y) != 3:
-            return True # Some other form? Bail out.
+            # Remove any version identifier from the OS (e.g., ios13.0 -> ios)
+            parts[2], _ = self._split_apple_os_version(parts[2])
 
-        return parts_x == parts_y
+        if len(parts) == 4 and parts[1] != "apple":
+            # 4-part "triples" are expected for Apple simulators;
+            # on any other platform, drop the 4th part.
+            del parts[1]
+        elif len(parts) != 3:
+            return None  # Some other form? Bail out.
 
+        return parts
 
     def create(self, env_dir):
         """
@@ -497,15 +529,17 @@ class CrossEnvBuilder(venv.EnvBuilder):
         """
         What should uname() return?
         """
-
-        # host_platform is _probably_ something like linux-x86_64, but it can
-        # vary.
+        # host_platform is _probably_ something like linux-x86_64, but it can vary.
+        # On iOS/tvOS/watchOS, it will be of the form ios-13.0-arm64-iphonesimulator,
+        # telling you sys.platform, the minimum supported OS version, the device ABI,
+        # and the architecture.
         host_info = self.host_platform.split('-')
         if not host_info:
-            self.host_sysname = sys.platform
+            self.host_sys_platform = sys.platform
         elif len(host_info) >= 1:
-            self.host_sysname = host_info[0]
+            self.host_sys_platform = host_info[0]
 
+        self.host_is_simulator = None
         if self.host_machine is None:
             platform2uname = {
                 # On uname.machine=ppc64, _PYTHON_HOST_PLATFORM is linux-powerpc64
@@ -516,10 +550,15 @@ class CrossEnvBuilder(venv.EnvBuilder):
             if len(host_info) > 1 and host_info[-1] in platform2uname:
                 # Test that this is still a special case when we can.
                 self.host_machine = platform2uname[host_info[-1]]
+            elif self.host_sys_platform in APPLE_MOBILE_PLATFORMS:
+                # iOS/tvOS/watchOS return the machine type as the last part of
+                # the host info. The device is a simulator if the last part ends
+                # with "simulator" (e.g., "iphoneos" vs "iphonesimulator")
+                self.host_machine = host_info[-2]
+                self.host_is_simulator = host_info[-1].endswith("simulator")
             else:
                 self.host_machine = self.host_gnu_type.split('-')[0]
 
-        self.host_release = ''
         if self.macosx_deployment_target:
             try:
                 major, minor = self.macosx_deployment_target.split(".")
@@ -534,16 +573,37 @@ class CrossEnvBuilder(venv.EnvBuilder):
             else:
                 raise ValueError("Unexpected major version %s for MACOSX_DEPLOYMENT_TARGET" %
                         major)
+        elif self.host_sys_platform in APPLE_MOBILE_PLATFORMS:
+            self.host_release = host_info[1]
+        else:
+            self.host_release = ''
 
-        if self.host_sysname == "darwin":
+        if self.host_sys_platform == "darwin":
             self.sysconfig_platform = "macosx-%s-%s" % (self.macosx_deployment_target,
                 self.host_machine)
-        elif self.host_sysname == "linux":
+        elif self.host_sys_platform == "linux":
             # Use self.host_machine here as powerpc64le gets converted
             # to ppc64le in self.host_machine
             self.sysconfig_platform = "linux-%s" % (self.host_machine)
         else:
             self.sysconfig_platform = self.host_platform
+
+        self.sysconfig_ext_suffix = self.host_sysconfigdata.build_time_vars['EXT_SUFFIX']
+
+        # Normalize case of the host system/sysname.
+        self.host_system = {
+            "ios": "iOS",
+            "tvos": "tvOS",
+            "watchos": "watchOS",
+        }.get(self.host_sys_platform, self.host_sys_platform.title())
+
+        # on iOS/tvOS/watchOS, platform.uname() reports the actual OS name;
+        # os.uname() reports the *kernel* name.
+        self.host_sysname = {
+            "ios": "Darwin",
+            "tvos": "Darwin",
+            "watchos": "Darwin",
+        }.get(self.host_sys_platform, self.host_sys_platform.title())
 
     def expand_platform_tags(self):
         """
@@ -677,14 +737,16 @@ class CrossEnvBuilder(venv.EnvBuilder):
         if self.cross_prefix:
             context.cross_env_dir = self.cross_prefix
         else:
-            context.cross_env_dir = os.path.join(context.env_dir, 'cross')
-        clear_cross = self.clear in ('default', 'cross-only', 'both')
+            context.cross_env_dir = os.path.join(context.env_dir, "cross")
+        cross_env_name = os.path.split(context.env_dir)[-1]
+
         env = venv.EnvBuilder(
                 system_site_packages=False,
                 clear=self.clear_cross,
                 symlinks=True,
                 upgrade=False,
-                with_pip=False)
+                with_pip=False,
+                prompt=cross_env_name)
         env.create(context.cross_env_dir)
         context.cross_bin_path = os.path.join(context.cross_env_dir, 'bin')
         context.cross_lib_path = os.path.join(context.cross_env_dir, 'lib')
@@ -770,7 +832,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
         host_build_time_vars = self.host_sysconfigdata.build_time_vars
         sysconfig_name = self.host_sysconfigdata_name
 
- 
+
         # Install patches to environment
         self.copy_and_patch_sysconfigdata(context)
 
@@ -788,7 +850,9 @@ class CrossEnvBuilder(venv.EnvBuilder):
             'importlib-metadata-patch.py',
             'platform-patch.py',
             'sysconfig-patch.py',
+            'subprocess-patch.py',
             'distutils-sysconfig-patch.py',
+            'pip-_vendor-distlib-scripts-patch.py',
             'pkg_resources-patch.py',
             'packaging-tags-patch.py',
         ]
@@ -840,12 +904,16 @@ class CrossEnvBuilder(venv.EnvBuilder):
         host_cc = self.real_host_cc[0]
         host_cxx = self.real_host_cxx[0]
         host_ar = self.real_host_ar[0]
+        host_prefix = self.host_sysconfigdata.build_time_vars['prefix']
+
         repl_cc = self.host_cc[0]
         repl_cxx = self.host_cxx[0]
         repl_ar = self.host_ar[0]
+
         find_cc = re.compile(r'(?:^|(?<=\s))%s(?=\s|$)' % re.escape(host_cc))
         find_cxx = re.compile(r'(?:^|(?<=\s))%s(?=\s|$)' % re.escape(host_cxx))
         find_ar = re.compile(r'(?:^|(?<=\s))%s(?=\s|$)' % re.escape(host_ar))
+        find_prefix = re.compile(r'(?:^|(?<=\s))%s' % re.escape(host_prefix))
 
         cross_sysconfig_data = {}
         for key, value in self.host_sysconfigdata.__dict__.items():
@@ -859,6 +927,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
                 value = find_ar.sub(repl_ar, value)
                 value = find_cxx.sub(repl_cxx, value)
                 value = find_cc.sub(repl_cc, value)
+                value = find_prefix.sub(self.host_home, value)
 
             build_time_vars[key] = value
 
