@@ -1,8 +1,6 @@
 Virtual Environments for Cross-Compiling Python Extension Modules
 =============================================================================
 
-|build status| |test status| |coverage status|
-
 Documentation is available online at https://crossenv.readthedocs.io and in the
 ``docs`` directory.
 
@@ -174,7 +172,3 @@ Known Limitations
   with extension modules (Cython, etc.), you will need to install them into
   Build-python's environment first. It's often a good idea to do a
   ``build-pip install <whatever>`` prior to ``pip install <whatever>``.
-
-.. |build status| image:: https://dev.azure.com/benfogle/crossenv/_apis/build/status/benfogle.crossenv?branchName=master
-.. |test status| image:: https://img.shields.io/azure-devops/tests/benfogle/crossenv/1/master
-.. |coverage status| image:: https://img.shields.io/azure-devops/coverage/benfogle/crossenv/1/master
