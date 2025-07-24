@@ -5,4 +5,5 @@ def _linux_platforms():
     yield from {{repr(self.platform_tags)}}
     arch = _normalize_string({{repr(self.host_machine)}})
     archs = {"armv8l": ["armv8l", "armv7l"]}.get(arch, [arch])
-    yield from archs
+    for arch in archs:
+        yield f"linux_{arch}"
